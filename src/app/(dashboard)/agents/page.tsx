@@ -118,8 +118,8 @@ export default function AgentsPage() {
       )}
 
       <Section
-        title="أداء كل الموظفين خلال الفترة المختارة"
-        hint="كل موظفي Chatwoot — حتى اللي مالهمش محادثات في الفترة"
+        title="أداء كل الموظفين"
+        hint="كل موظفي شات ووت ظاهرين هنا، والفترة المختارة تؤثر على الأرقام فقط وليس ظهور الموظفين"
         action={
           <div className="flex items-center gap-3">
             <label

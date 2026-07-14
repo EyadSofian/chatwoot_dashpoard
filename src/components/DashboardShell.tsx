@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Topbar } from "@/components/Topbar";
 import { FilterBar } from "@/components/FilterBar";
+import { SyncWarning } from "@/components/SyncWarning";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -14,7 +15,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <Topbar onMenu={() => setOpen(true)} />
         <FilterBar />
         <main className="flex-1 overflow-x-hidden p-5 pb-10">
-          <div className="mx-auto max-w-[1600px] animate-fade-up">{children}</div>
+          <div className="mx-auto max-w-[1600px] animate-fade-up">
+            <SyncWarning />
+            {children}
+          </div>
         </main>
       </div>
     </div>
