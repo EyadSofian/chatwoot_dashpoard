@@ -16,7 +16,7 @@ export interface BackfillOptions {
 export interface BackfillStats {
   syncRunId: string;
   days: number;
-  entities: { agents: number; teams: number; inboxes: number };
+  entities: { agents: number; teams: number; inboxes: number; memberships: number };
   conversationsProcessed: number;
   conversationsFailed: number;
   pages: number;

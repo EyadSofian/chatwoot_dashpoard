@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { DEPARTMENTS } from "@/lib/constants";
+import { getMetadataSyncState } from "@/lib/ingest/entities";
 
 export interface FilterOptions {
   agents: { id: number; name: string }[];
@@ -7,10 +8,12 @@ export interface FilterOptions {
   inboxes: { id: number; name: string }[];
   campaignLabels: string[];
   departments: string[];
+  /** Never synced ⇒ the agent/team rosters are empty and the UI must say so. */
+  metadata: { synced: boolean; lastSyncAt: string | null; agents: number; teams: number };
 }
 
 export async function getFilterOptions(): Promise<FilterOptions> {
-  const [agents, teams, inboxes, labels] = await Promise.all([
+  const [agents, teams, inboxes, labels, metadata] = await Promise.all([
     prisma.agent.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, department: true } }),
     prisma.inbox.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -20,6 +23,7 @@ export async function getFilterOptions(): Promise<FilterOptions> {
       select: { campaignLabel: true },
       take: 500,
     }),
+    getMetadataSyncState(),
   ]);
 
   return {
@@ -28,5 +32,11 @@ export async function getFilterOptions(): Promise<FilterOptions> {
     inboxes: inboxes.map((i) => ({ id: i.id, name: i.name ?? `#${i.id}` })),
     campaignLabels: labels.map((l) => l.campaignLabel).filter((l): l is string => Boolean(l)).sort(),
     departments: [...DEPARTMENTS],
+    metadata: {
+      synced: metadata.synced,
+      lastSyncAt: metadata.lastSyncAt,
+      agents: metadata.agents,
+      teams: metadata.teams,
+    },
   };
 }

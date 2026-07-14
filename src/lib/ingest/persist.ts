@@ -53,6 +53,7 @@ export async function persistConversation(assembled: AssembledConversation): Pro
         conversationCwId,
         assigneeCwId: i.assigneeId,
         assigneeName: i.assigneeName,
+        teamCwId: i.teamCwId,
         startedAt: i.startedAt,
         endedAt: i.endedAt,
         firstReplyAt: i.firstReplyAt,

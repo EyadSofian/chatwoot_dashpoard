@@ -5,6 +5,7 @@ import { toCsv, csvResponse, type CsvColumn } from "@/lib/csv";
 import { parseFilters } from "@/lib/reporting/filters";
 import { conversationWhere } from "@/lib/reporting/filters";
 import { getAgentLeaderboard } from "@/lib/reporting/agents";
+import { getTeams, getTeamMembers, getTeamConversations } from "@/lib/reporting/teams";
 import { getDepartments } from "@/lib/reporting/departments";
 import { getCampaigns } from "@/lib/reporting/campaigns";
 import { getSla } from "@/lib/reporting/sla";
@@ -77,6 +78,80 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
         { key: "slaBreaches", label: "خرق SLA" },
       ];
       return csvResponse(toCsv(rows, columns), "agents.csv");
+    }
+
+    case "teams": {
+      // Every team, zeros included — same roster the screen shows.
+      const { rows } = await getTeams(filters);
+      const columns: CsvColumn<(typeof rows)[number]>[] = [
+        { key: "name", label: "التيم" },
+        { key: "department", label: "القسم", format: (r) => depAr(r.department) },
+        { key: "memberCount", label: "عدد الموظفين" },
+        { key: "activeMembers", label: "موظفون نشطون" },
+        { key: "conversations", label: "محادثات" },
+        { key: "open", label: "مفتوحة" },
+        { key: "pending", label: "منتظرة" },
+        { key: "resolved", label: "محلولة" },
+        { key: "replied", label: "تم الرد" },
+        { key: "needsReply", label: "تحتاج رد" },
+        { key: "unread", label: "غير مقروءة" },
+        { key: "avgResponseSeconds", label: "متوسط الرد (ث)" },
+        { key: "medianResponseSeconds", label: "وسيط الرد (ث)" },
+        { key: "maxResponseSeconds", label: "أقصى رد (ث)" },
+        { key: "avgResolutionSeconds", label: "متوسط الإغلاق (ث)" },
+        { key: "slaBreaches", label: "خرق SLA" },
+        { key: "campaignReplies", label: "ردود كامبين" },
+        { key: "botHandoffs", label: "تسليمات فهد" },
+        { key: "lastActivityAt", label: "آخر نشاط", format: (r) => iso(r.lastActivityAt) },
+      ];
+      return csvResponse(toCsv(rows, columns), "teams.csv");
+    }
+
+    case "team-members": {
+      const teamId = Number(new URL(request.url).searchParams.get("teamId"));
+      if (!Number.isFinite(teamId)) return badRequest("teamId مطلوب");
+      const rows = await getTeamMembers(teamId, filters);
+      const columns: CsvColumn<(typeof rows)[number]>[] = [
+        { key: "name", label: "الموظف" },
+        { key: "email", label: "البريد" },
+        { key: "assigned", label: "مُسند" },
+        { key: "replied", label: "تم الرد" },
+        { key: "needsReply", label: "تحتاج رد" },
+        { key: "open", label: "مفتوحة" },
+        { key: "resolved", label: "محلولة" },
+        { key: "openLoad", label: "الحمل الحالي" },
+        { key: "avgResponseSeconds", label: "متوسط الرد (ث)" },
+        { key: "medianResponseSeconds", label: "وسيط الرد (ث)" },
+        { key: "maxResponseSeconds", label: "أقصى رد (ث)" },
+        { key: "slaBreaches", label: "خرق SLA" },
+        { key: "lastActivityAt", label: "آخر نشاط", format: (r) => iso(r.lastActivityAt) },
+      ];
+      return csvResponse(toCsv(rows, columns), `team-${teamId}-members.csv`);
+    }
+
+    case "team-conversations": {
+      const teamId = Number(new URL(request.url).searchParams.get("teamId"));
+      if (!Number.isFinite(teamId)) return badRequest("teamId مطلوب");
+      // Export is the one place the whole list is wanted, not one page of it.
+      const { rows } = await getTeamConversations(teamId, filters, 1, 200);
+      const columns: CsvColumn<(typeof rows)[number]>[] = [
+        { key: "chatwootId", label: "رقم المحادثة" },
+        { key: "contactName", label: "العميل" },
+        { key: "contactPhone", label: "الهاتف" },
+        { key: "assigneeName", label: "الموظف" },
+        { key: "inboxName", label: "القناة" },
+        { key: "department", label: "القسم", format: (r) => depAr(r.department) },
+        { key: "status", label: "الحالة" },
+        { key: "needsReply", label: "يحتاج رد", format: (r) => (r.needsReply ? "نعم" : "لا") },
+        { key: "responseSeconds", label: "زمن الرد (ث)" },
+        { key: "conversationDurationSeconds", label: "مدة المحادثة (ث)" },
+        { key: "campaignLabel", label: "الكامبين" },
+        { key: "botInvolved", label: "تدخل فهد", format: (r) => (r.botInvolved ? "نعم" : "لا") },
+        { key: "slaFirstResponseBreached", label: "خرق SLA", format: (r) => (r.slaFirstResponseBreached ? "نعم" : "لا") },
+        { key: "lastMessageAt", label: "آخر رسالة", format: (r) => iso(r.lastMessageAt) },
+        { key: "chatwootId", label: "رابط", format: (r) => link(r.chatwootId) },
+      ];
+      return csvResponse(toCsv(rows, columns), `team-${teamId}-conversations.csv`);
     }
 
     case "departments": {

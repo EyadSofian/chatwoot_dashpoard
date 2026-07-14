@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  UsersRound,
   Building2,
   MessagesSquare,
   Megaphone,
@@ -14,6 +15,7 @@ import {
 const MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
   Users,
+  UsersRound,
   Building2,
   MessagesSquare,
   Megaphone,

@@ -52,7 +52,25 @@ model Agent {
   confirmed   Boolean  @default(true)
   updatedAt   DateTime @updatedAt
 
+  memberships TeamMembership[]
+
   @@map("agents")
+}
+
+/// Chatwoot team membership (GET /teams/:id/team_members).
+/// An agent can belong to SEVERAL teams, so this is only ever a fallback for
+/// team attribution — never the primary truth. See metrics/teamAttribution.ts.
+model TeamMembership {
+  teamCwId  Int
+  agentCwId Int
+  createdAt DateTime @default(now())
+
+  team  Team  @relation(fields: [teamCwId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentCwId], references: [id], onDelete: Cascade)
+
+  @@id([teamCwId, agentCwId])
+  @@index([agentCwId])
+  @@map("team_memberships")
 }
 
 model Team {
@@ -60,6 +78,8 @@ model Team {
   name       String?
   department String? // derived: sales | operations | complaints | unknown
   updatedAt  DateTime @updatedAt
+
+  memberships TeamMembership[]
 
   @@map("teams")
 }
@@ -169,6 +189,12 @@ model Conversation {
   @@index([isCampaign])
   @@index([needsReply])
   @@index([campaignLabel])
+  @@index([assignedAt])
+  @@index([firstHumanReplyAt])
+  @@index([resolvedAt])
+  @@index([slaFirstResponseBreached])
+  // The team report's hot path: one team, one window.
+  @@index([teamCwId, createdAtCw])
   @@map("conversations")
 }
 
@@ -228,6 +254,9 @@ model AssignmentInterval {
   conversationCwId Int
   assigneeCwId   Int
   assigneeName   String?
+  /// Team the conversation sat in at assignment time. Preserves team history
+  /// when a conversation is later moved or un-teamed — attribution source #2.
+  teamCwId       Int?
   startedAt      DateTime // when assigned
   endedAt        DateTime? // when reassigned/unassigned/resolved
   firstReplyAt   DateTime? // first public human reply by this assignee after start
@@ -238,6 +267,7 @@ model AssignmentInterval {
 
   @@unique([conversationCwId, assigneeCwId, startedAt])
   @@index([assigneeCwId, startedAt])
+  @@index([teamCwId, startedAt])
   @@map("assignment_intervals")
 }
 

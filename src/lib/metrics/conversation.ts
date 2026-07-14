@@ -28,7 +28,7 @@ export interface AssembleContext {
 export interface AssembledConversation {
   conversation: ConversationRecord;
   messages: NormalizedMessage[];
-  assignmentIntervals: (AssignmentIntervalResult & { assigneeName: string | null })[];
+  assignmentIntervals: (AssignmentIntervalResult & { assigneeName: string | null; teamCwId: number | null })[];
   resolutionSegments: (ResolutionSegment & { businessSeconds: number | null })[];
   responseMetric: {
     assigneeCwId: number | null;
@@ -199,9 +199,12 @@ export function assembleConversation(
     humanReplies.map((m) => ({ senderId: m.senderId, at: m.createdAt! })),
     endBoundary,
   );
+  // Stamp the team onto each interval so team attribution survives a later
+  // re-team (or un-team) of the conversation.
   const intervalsNamed = intervals.map((i) => ({
     ...i,
     assigneeName: i.assigneeId === assigneeCwId ? assigneeName : null,
+    teamCwId,
   }));
   const firstResp = firstResponseFromAssignment(intervals);
   const assignedAt = firstResp.assignedAt;

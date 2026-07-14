@@ -97,6 +97,7 @@ export const SLA_LABELS_AR: Record<SlaState, string> = {
 export const NAV_ITEMS = [
   { href: "/", key: "overview", labelAr: "نظرة عامة", labelEn: "Overview", icon: "LayoutDashboard" },
   { href: "/agents", key: "agents", labelAr: "الموظفون", labelEn: "Agents", icon: "Users" },
+  { href: "/teams", key: "teams", labelAr: "التيمات", labelEn: "Teams", icon: "UsersRound" },
   { href: "/departments", key: "departments", labelAr: "الأقسام", labelEn: "Departments", icon: "Building2" },
   { href: "/conversations", key: "conversations", labelAr: "المحادثات", labelEn: "Conversations", icon: "MessagesSquare" },
   { href: "/campaigns", key: "campaigns", labelAr: "الكامبينات", labelEn: "Campaigns", icon: "Megaphone" },
@@ -105,5 +106,17 @@ export const NAV_ITEMS = [
   { href: "/exports", key: "exports", labelAr: "التصدير", labelEn: "Exports", icon: "Download" },
   { href: "/settings", key: "settings", labelAr: "الإعدادات", labelEn: "Settings", icon: "Settings" },
 ] as const;
+
+export type NavKey = (typeof NAV_ITEMS)[number]["key"];
+
+/**
+ * Sidebar sections. Grouping keeps a ten-item menu scannable: you look for the
+ * kind of question you have, not the page name you half-remember.
+ */
+export const NAV_GROUPS: { titleAr: string; keys: NavKey[] }[] = [
+  { titleAr: "التحليلات", keys: ["overview", "agents", "teams", "departments", "conversations", "campaigns"] },
+  { titleAr: "التشغيل", keys: ["sla", "fahd", "exports"] },
+  { titleAr: "النظام", keys: ["settings"] },
+];
 
 export const SESSION_COOKIE = "engosoft_analytics_session";
