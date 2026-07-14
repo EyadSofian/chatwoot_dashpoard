@@ -32,12 +32,16 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Apply migrations then boot the standalone server.
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]
+# Run the CLI via its real file, not the node_modules/.bin/prisma symlink:
+# `COPY --from=... /app/node_modules/.bin/prisma ...` dereferences that symlink
+# into a standalone copy sitting in .bin/, so the bundled CLI's __dirname-relative
+# lookup of its own *.wasm engines (which live beside build/index.js) resolves to
+# the wrong directory and fails with ENOENT. Invoking build/index.js directly
+# keeps it next to its wasm files, where it was copied intact above.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
