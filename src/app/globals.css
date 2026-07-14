@@ -2,68 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Design tokens: Data-Dense Dashboard (deep blue + amber), light + dark ── */
+/* ─────────────────────────────────────────────────────────────────────────────
+   Engosoft Analytics — design tokens
+   Light-only. Brand identity taken from the Engosoft logo:
+   vivid azure blue + deep navy. Soft, spacious, rounded — the "bento" family,
+   not the data-dense one.
+   ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --color-primary: 30 64 175;
+  /* Brand */
+  --brand-400: 53 167 255; /* #35A7FF — light end of the logo gradient */
+  --brand-500: 11 107 240; /* #0B6BF0 — primary (the "SOFT" blue)          */
+  --brand-600: 8 87 200; /*   #0857C8 — hover                             */
+  --brand-700: 6 68 158; /*   #06449E — pressed                           */
+  --navy: 11 37 69; /*        #0B2545 — the "ENGO" navy                    */
+
+  /* Semantic tokens */
+  --color-primary: var(--brand-500);
+  --color-primary-hover: var(--brand-600);
   --color-on-primary: 255 255 255;
-  --color-secondary: 59 130 246;
-  --color-accent: 217 119 6;
-  --color-background: 248 250 252;
+  --color-secondary: var(--brand-400);
+  --color-accent: 124 92 252; /* #7C5CFC violet — secondary highlight      */
+
+  --color-background: 244 247 251; /* #F4F7FB — soft blue-tinted canvas    */
   --color-surface: 255 255 255;
-  --color-surface-2: 241 245 249;
-  --color-foreground: 15 23 42;
-  --color-muted: 233 238 246;
-  --color-muted-foreground: 100 116 139;
-  --color-border: 226 232 240;
-  --color-destructive: 220 38 38;
-  --color-success: 22 163 74;
-  --color-warning: 180 83 9;
-  --color-ring: 30 64 175;
-  color-scheme: light;
-}
+  --color-surface-2: 245 248 252; /*  #F5F8FC — subtle fill (table head)   */
+  --color-muted: 238 243 250; /*      #EEF3FA                              */
+  --color-muted-foreground: 107 124 147; /* #6B7C93 — 4.6:1 on white       */
+  --color-foreground: var(--navy); /* navy body text ties back to the logo */
+  --color-border: 227 235 243; /*     #E3EBF3                              */
 
-:root[data-theme="dark"] {
-  --color-primary: 59 130 246;
-  --color-on-primary: 255 255 255;
-  --color-secondary: 96 165 250;
-  --color-accent: 245 158 11;
-  --color-background: 8 12 22;
-  --color-surface: 17 24 39;
-  --color-surface-2: 30 41 59;
-  --color-foreground: 226 232 240;
-  --color-muted: 30 41 59;
-  --color-muted-foreground: 148 163 184;
-  --color-border: 51 65 85;
-  --color-destructive: 248 113 113;
-  --color-success: 74 222 128;
-  --color-warning: 251 191 36;
-  --color-ring: 96 165 250;
-  color-scheme: dark;
-}
+  --color-success: 16 185 129; /*     #10B981                              */
+  --color-success-fg: 4 120 87; /*    #047857 — readable on tint           */
+  --color-warning: 245 158 11; /*     #F59E0B                              */
+  --color-warning-fg: 180 83 9; /*    #B45309                              */
+  --color-destructive: 239 68 68; /*  #EF4444                              */
+  --color-destructive-fg: 220 38 38; /* #DC2626                            */
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-primary: 59 130 246;
-    --color-on-primary: 255 255 255;
-    --color-secondary: 96 165 250;
-    --color-accent: 245 158 11;
-    --color-background: 8 12 22;
-    --color-surface: 17 24 39;
-    --color-surface-2: 30 41 59;
-    --color-foreground: 226 232 240;
-    --color-muted: 30 41 59;
-    --color-muted-foreground: 148 163 184;
-    --color-border: 51 65 85;
-    --color-destructive: 248 113 113;
-    --color-success: 74 222 128;
-    --color-warning: 251 191 36;
-    --color-ring: 96 165 250;
-    color-scheme: dark;
-  }
-}
+  --color-ring: var(--brand-500);
 
-:root {
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  color-scheme: light;
 }
 
 @layer base {
@@ -76,11 +55,10 @@
   body {
     background-color: rgb(var(--color-background));
     color: rgb(var(--color-foreground));
-    font-feature-settings: "ss01", "cv01";
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
-  /* Tabular figures for all numeric data so table columns never jump. */
+  /* Tabular figures for every number so table columns never jump. */
   .tnum {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
@@ -88,6 +66,7 @@
   :focus-visible {
     outline: 2px solid rgb(var(--color-ring));
     outline-offset: 2px;
+    border-radius: 0.5rem;
   }
   ::-webkit-scrollbar {
     width: 10px;
@@ -96,6 +75,12 @@
   ::-webkit-scrollbar-thumb {
     background: rgb(var(--color-border));
     border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--color-muted-foreground) / 0.4);
+    background-clip: content-box;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -103,36 +88,67 @@
 }
 
 @layer components {
+  /* ── Surfaces ── */
   .card {
     @apply rounded-card border border-border bg-surface shadow-card;
   }
+  .card-hover {
+    @apply transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  /* ── Type ── */
   .kpi-value {
-    @apply text-2xl font-bold tracking-tight tnum;
+    @apply text-[26px] font-bold leading-none tracking-tight tnum;
   }
+  .label-muted {
+    @apply text-xs font-medium text-muted-foreground;
+  }
+
+  /* ── Badges / pills ── */
   .badge {
-    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold;
   }
-  .table-cell {
-    @apply whitespace-nowrap px-3 py-2 text-sm;
-  }
+
+  /* ── Buttons ── */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+           transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-primary text-on-primary hover:bg-primary/90;
+    @apply btn bg-primary text-on-primary shadow-brand hover:bg-primary-hover active:translate-y-px;
   }
   .btn-ghost {
-    @apply btn border border-border bg-surface text-foreground hover:bg-surface-2;
+    @apply btn border border-border bg-surface text-foreground hover:border-primary/30 hover:bg-muted active:translate-y-px;
   }
+  .btn-soft {
+    @apply btn bg-primary/10 text-primary hover:bg-primary/15 active:translate-y-px;
+  }
+
+  /* ── Inputs ── */
   .input {
-    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none;
+    @apply w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground
+           transition-colors placeholder:text-muted-foreground
+           focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10;
+  }
+  .select-chip {
+    @apply cursor-pointer appearance-none rounded-full border bg-surface py-1.5 pe-7 ps-3 text-xs font-medium
+           text-foreground transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10;
   }
 }
 
-/* RTL niceties: recharts/tooltips keep LTR for numbers where needed. */
+/* RTL: keep numeric/latin runs left-to-right where they'd otherwise flip. */
 [dir="rtl"] .ltr-nums {
   direction: ltr;
   unicode-bidi: embed;
+}
+
+/* Native selects render their arrow on the wrong side in RTL — draw our own. */
+[dir="rtl"] .select-chip {
+  background-image: linear-gradient(45deg, transparent 50%, rgb(var(--color-muted-foreground)) 50%),
+    linear-gradient(135deg, rgb(var(--color-muted-foreground)) 50%, transparent 50%);
+  background-position: 12px calc(50% - 1px), 16px calc(50% - 1px);
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
 }
 
 @media (prefers-reduced-motion: reduce) {

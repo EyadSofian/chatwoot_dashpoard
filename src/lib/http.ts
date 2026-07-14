@@ -10,10 +10,15 @@ export async function getSession(): Promise<SessionPayload | null> {
   return verifySessionToken(store.get(SESSION_COOKIE)?.value);
 }
 
+/** Stand-in session used when AUTH_ENABLED is off — the dashboard is open. */
+const OPEN_SESSION: SessionPayload = { sub: env.appUsername() };
+
 /** For API routes: returns session or a 401 JSON response to return early. */
 export async function requireSession(): Promise<
   { ok: true; session: SessionPayload } | { ok: false; response: NextResponse }
 > {
+  if (!env.authEnabled()) return { ok: true, session: OPEN_SESSION };
+
   const session = await getSession();
   if (!session) {
     return {
@@ -37,6 +42,7 @@ export function isCronAuthorized(request: Request): boolean {
 export async function requireSessionOrCron(
   request: Request,
 ): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
+  if (!env.authEnabled()) return { ok: true };
   if (isCronAuthorized(request)) return { ok: true };
   const session = await getSession();
   if (session) return { ok: true };

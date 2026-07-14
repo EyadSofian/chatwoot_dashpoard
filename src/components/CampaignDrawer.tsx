@@ -33,7 +33,7 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/40" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0 z-50 bg-navy/30 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <aside className="fixed inset-y-0 z-50 flex w-full max-w-[560px] flex-col border-e border-border bg-surface shadow-pop" style={{ left: 0 }}>
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="min-w-0">
@@ -47,7 +47,7 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
 
         <div className="flex-1 overflow-y-auto p-4">
           {loading && <div className="flex justify-center p-8"><Spinner /></div>}
-          {error && <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">{error}</div>}
+          {error && <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive-fg">{error}</div>}
           {j && (
             <>
               <div className="mb-3 rounded-lg border border-border bg-surface-2/40 p-3">
@@ -58,10 +58,10 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
 
               <div className="mb-4 grid grid-cols-3 gap-2 text-center">
                 <Stat label="الإجمالي" value={formatNumber(j.total)} />
-                <Stat label="مُرسل" value={formatNumber(j.sent)} tone="text-success" />
-                <Stat label="فشل" value={formatNumber(j.failed)} tone="text-destructive" />
+                <Stat label="مُرسل" value={formatNumber(j.sent)} tone="text-success-fg" />
+                <Stat label="فشل" value={formatNumber(j.failed)} tone="text-destructive-fg" />
                 <Stat label="متخطى" value={formatNumber(j.skipped)} />
-                <Stat label="فشل تسليم" value={formatNumber(j.deliveryFailuresCount)} tone="text-warning" />
+                <Stat label="فشل تسليم" value={formatNumber(j.deliveryFailuresCount)} tone="text-warning-fg" />
                 <Stat label="ردود" value={formatNumber(data?.replies.length ?? 0)} tone="text-primary" />
               </div>
 

@@ -46,7 +46,7 @@ function ConfigStatus({ health }: { health: Health | null }) {
           <li key={i.label} className="flex items-center justify-between">
             <span>{i.label}</span>
             {i.ok ? (
-              <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="h-4 w-4" /> مضبوط</span>
+              <span className="inline-flex items-center gap-1 text-success-fg"><CheckCircle2 className="h-4 w-4" /> مضبوط</span>
             ) : (
               <span className="inline-flex items-center gap-1 text-muted-foreground"><XCircle className="h-4 w-4" /> غير مضبوط</span>
             )}
@@ -86,7 +86,7 @@ function ChatwootTest() {
             </div>
           </div>
         ) : (
-          <div className="rounded-lg bg-destructive/10 p-2 text-xs text-destructive">{result.error}</div>
+          <div className="rounded-lg bg-destructive/10 p-2 text-xs text-destructive-fg">{result.error}</div>
         )
       ) : (
         <p className="text-xs text-muted-foreground">اضغط اختبار للتحقق من الاتصال باستخدام متغيرات البيئة.</p>

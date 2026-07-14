@@ -15,111 +15,161 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts";
-import { useTheme } from "@/components/providers";
 
-const LIGHT = {
-  primary: "#1E40AF",
-  secondary: "#3B82F6",
-  accent: "#D97706",
-  grid: "#E2E8F0",
-  text: "#64748B",
-  success: "#16A34A",
-  danger: "#DC2626",
-  warning: "#B45309",
+/**
+ * One light palette, tuned for white cards.
+ * Categorical hues are spaced around the wheel and matched in perceived weight,
+ * so no single series shouts louder than the others.
+ */
+export const CHART = {
+  brand: "#0B6BF0",
+  cyan: "#06B6D4",
+  violet: "#7C5CFC",
+  amber: "#F59E0B",
+  emerald: "#10B981",
+  rose: "#F43F5E",
+  grid: "#E3EBF3",
+  axis: "#8CA0B8",
   surface: "#FFFFFF",
-};
-const DARK = {
-  primary: "#60A5FA",
-  secondary: "#3B82F6",
-  accent: "#F59E0B",
-  grid: "#334155",
-  text: "#94A3B8",
-  success: "#4ADE80",
-  danger: "#F87171",
-  warning: "#FBBF24",
-  surface: "#111827",
-};
+} as const;
 
-export function useChartColors() {
-  const { theme } = useTheme();
-  return theme === "dark" ? DARK : LIGHT;
-}
+/** Categorical series colours, in the order they should be handed out. */
+export const CATEGORICAL = [CHART.brand, CHART.cyan, CHART.violet, CHART.amber, CHART.emerald, CHART.rose];
 
+/** Recharts renders differently on the server — hold the layout until mounted. */
 function useMounted() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   return mounted;
 }
 
-function tooltipStyle(c: typeof LIGHT) {
-  return {
-    contentStyle: {
-      background: c.surface,
-      border: `1px solid ${c.grid}`,
-      borderRadius: 8,
-      fontSize: 12,
-      color: c.text,
-    },
-    labelStyle: { color: c.text },
-  };
-}
+const TOOLTIP = {
+  contentStyle: {
+    background: CHART.surface,
+    border: "1px solid #E3EBF3",
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: 600,
+    padding: "8px 12px",
+    boxShadow: "0 16px 32px -16px rgb(11 37 69 / 0.22)",
+    color: "#0B2545",
+  },
+  labelStyle: { color: "#6B7C93", fontWeight: 500, marginBottom: 2 },
+  cursor: { fill: "rgba(11,107,240,0.05)" },
+} as const;
+
+const AXIS = {
+  tick: { fill: CHART.axis, fontSize: 11, fontWeight: 500 },
+  tickLine: false,
+} as const;
 
 export function TrendChart({ data }: { data: { date: string; count: number; resolved: number }[] }) {
-  const c = useChartColors();
   const mounted = useMounted();
-  if (!mounted) return <div className="h-64" />;
+  if (!mounted) return <div className="h-[280px]" />;
   return (
-    <ResponsiveContainer width="100%" height={256}>
-      <AreaChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+    <ResponsiveContainer width="100%" height={280}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="gConv" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={c.primary} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={c.primary} stopOpacity={0} />
+            <stop offset="0%" stopColor={CHART.brand} stopOpacity={0.28} />
+            <stop offset="100%" stopColor={CHART.brand} stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="gResolved" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CHART.emerald} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={CHART.emerald} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
-        <XAxis dataKey="date" tick={{ fill: c.text, fontSize: 11 }} tickLine={false} axisLine={{ stroke: c.grid }} minTickGap={24} />
-        <YAxis tick={{ fill: c.text, fontSize: 11 }} tickLine={false} axisLine={false} width={32} allowDecimals={false} />
-        <Tooltip {...tooltipStyle(c)} />
-        <Area type="monotone" dataKey="count" name="محادثات" stroke={c.primary} strokeWidth={2} fill="url(#gConv)" />
-        <Area type="monotone" dataKey="resolved" name="محلولة" stroke={c.success} strokeWidth={2} fill="transparent" />
+        <CartesianGrid strokeDasharray="4 4" stroke={CHART.grid} vertical={false} />
+        <XAxis dataKey="date" {...AXIS} axisLine={{ stroke: CHART.grid }} minTickGap={28} />
+        <YAxis {...AXIS} axisLine={false} width={36} allowDecimals={false} />
+        <Tooltip {...TOOLTIP} />
+        <Area
+          type="monotone"
+          dataKey="count"
+          name="محادثات"
+          stroke={CHART.brand}
+          strokeWidth={2.5}
+          fill="url(#gConv)"
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 2, stroke: CHART.surface }}
+        />
+        <Area
+          type="monotone"
+          dataKey="resolved"
+          name="محلولة"
+          stroke={CHART.emerald}
+          strokeWidth={2.5}
+          fill="url(#gResolved)"
+          dot={false}
+          activeDot={{ r: 4, strokeWidth: 2, stroke: CHART.surface }}
+        />
       </AreaChart>
     </ResponsiveContainer>
   );
 }
 
 export function DeptResponseBar({ data }: { data: { department: string; avg: number }[] }) {
-  const c = useChartColors();
   const mounted = useMounted();
-  if (!mounted) return <div className="h-64" />;
+  if (!mounted) return <div className="h-[280px]" />;
   return (
-    <ResponsiveContainer width="100%" height={256}>
-      <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} horizontal={false} />
-        <XAxis type="number" tick={{ fill: c.text, fontSize: 11 }} tickLine={false} axisLine={{ stroke: c.grid }} />
-        <YAxis type="category" dataKey="department" tick={{ fill: c.text, fontSize: 12 }} tickLine={false} axisLine={false} width={80} />
-        <Tooltip {...tooltipStyle(c)} formatter={(v: number) => [`${Math.round(v / 60)} د`, "متوسط الرد"]} />
-        <Bar dataKey="avg" name="متوسط الرد (ث)" fill={c.primary} radius={[0, 6, 6, 0]} barSize={22} />
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="4 4" stroke={CHART.grid} horizontal={false} />
+        <XAxis type="number" {...AXIS} axisLine={{ stroke: CHART.grid }} />
+        <YAxis type="category" dataKey="department" {...AXIS} tick={{ ...AXIS.tick, fontSize: 12 }} axisLine={false} width={78} />
+        <Tooltip {...TOOLTIP} formatter={(v: number) => [`${Math.round(v / 60)} دقيقة`, "متوسط الرد"]} />
+        <Bar dataKey="avg" name="متوسط الرد" radius={[0, 8, 8, 0]} barSize={20}>
+          {data.map((_, i) => (
+            <Cell key={i} fill={CATEGORICAL[i % CATEGORICAL.length]} />
+          ))}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );
 }
 
 export function DonutChart({ data }: { data: { name: string; value: number; color: string }[] }) {
-  const c = useChartColors();
   const mounted = useMounted();
-  if (!mounted) return <div className="h-56" />;
   const total = data.reduce((s, d) => s + d.value, 0);
+  if (!mounted) return <div className="h-[240px]" />;
+
   return (
-    <ResponsiveContainer width="100%" height={224}>
-      <PieChart>
-        <Pie data={data} dataKey="value" nameKey="name" innerRadius={58} outerRadius={88} paddingAngle={2} stroke="none">
-          {data.map((entry, i) => (
-            <Cell key={i} fill={entry.color} />
-          ))}
-        </Pie>
-        <Tooltip {...tooltipStyle(c)} formatter={(v: number, n) => [`${v} (${total ? Math.round((v / total) * 100) : 0}%)`, n]} />
-      </PieChart>
-    </ResponsiveContainer>
+    <div className="relative">
+      <ResponsiveContainer width="100%" height={240}>
+        <PieChart>
+          <Pie data={data} dataKey="value" nameKey="name" innerRadius={64} outerRadius={94} paddingAngle={3} stroke="none" cornerRadius={6}>
+            {data.map((entry, i) => (
+              <Cell key={i} fill={entry.color} />
+            ))}
+          </Pie>
+          <Tooltip
+            {...TOOLTIP}
+            cursor={false}
+            formatter={(v: number, n) => [`${v} (${total ? Math.round((v / total) * 100) : 0}%)`, n]}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+
+      {/* Total in the hole — the number you actually came for. */}
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-extrabold tnum text-foreground">{total}</span>
+        <span className="text-2xs text-muted-foreground">الإجمالي</span>
+      </div>
+    </div>
+  );
+}
+
+/** Legend rendered as text + swatch, so colour is never the only signal. */
+export function ChartLegend({ items }: { items: { name: string; value: number; color: string }[] }) {
+  return (
+    <ul className="mt-3 space-y-2">
+      {items.map((i) => (
+        <li key={i.name} className="flex items-center gap-2 text-xs">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: i.color }} aria-hidden />
+          <span className="flex-1 truncate text-muted-foreground">{i.name}</span>
+          <span className="font-bold tnum text-foreground">{i.value}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

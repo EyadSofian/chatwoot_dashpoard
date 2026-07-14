@@ -55,7 +55,8 @@ export const env = {
   campaignOperationsUrl: () => (raw("CAMPAIGN_OPERATIONS_APP_URL") || "").replace(/\/+$/, ""),
   campaignAppsApiSecret: () => raw("CAMPAIGN_APPS_API_SECRET") || "",
 
-  // Auth
+  // Auth — OFF by default (no login screen). Set AUTH_ENABLED=true to require it.
+  authEnabled: () => raw("AUTH_ENABLED") === "true",
   appUsername: () => raw("APP_USERNAME") || "admin",
   appPassword: () => raw("APP_PASSWORD") || "",
   sessionSecret: () =>

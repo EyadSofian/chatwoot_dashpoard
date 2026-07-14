@@ -56,7 +56,7 @@ export function ConversationDrawer({ conversationId, onClose }: { conversationId
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/40" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0 z-50 bg-navy/30 backdrop-blur-sm" onClick={onClose} aria-hidden />
       <aside className="fixed inset-y-0 z-50 flex w-full max-w-[480px] flex-col border-e border-border bg-surface shadow-pop" style={{ left: 0 }}>
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="min-w-0">
@@ -77,7 +77,7 @@ export function ConversationDrawer({ conversationId, onClose }: { conversationId
 
         <div className="flex-1 overflow-y-auto p-4">
           {loading && <div className="flex justify-center p-8"><Spinner /></div>}
-          {error && <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive">{error}</div>}
+          {error && <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive-fg">{error}</div>}
           {c && (
             <>
               <div className="mb-4 flex flex-wrap items-center gap-2">

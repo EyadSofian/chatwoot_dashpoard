@@ -17,7 +17,7 @@ export default function AgentsPage() {
     { key: "name", header: "الموظف", render: (r) => <span className="font-medium text-primary">{r.name}</span> },
     { key: "assigned", header: "مُسند", render: (r) => num(r.assigned) },
     { key: "replied", header: "تم الرد", render: (r) => num(r.replied) },
-    { key: "needsReply", header: "تحتاج رد", render: (r) => <span className={r.needsReply ? "tnum text-destructive" : "tnum"}>{formatNumber(r.needsReply)}</span> },
+    { key: "needsReply", header: "تحتاج رد", render: (r) => <span className={r.needsReply ? "tnum text-destructive-fg" : "tnum"}>{formatNumber(r.needsReply)}</span> },
     { key: "open", header: "مفتوحة", render: (r) => num(r.open) },
     { key: "resolved", header: "محلولة", render: (r) => num(r.resolved) },
     { key: "pending", header: "منتظرة", render: (r) => num(r.pending) },

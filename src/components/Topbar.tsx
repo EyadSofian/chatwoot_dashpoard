@@ -1,51 +1,64 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { Menu, Moon, Sun, LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { Menu, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { NAV_ITEMS } from "@/lib/constants";
-import { useTheme } from "@/components/providers";
-import { apiPost } from "@/lib/client/api";
+import { cn } from "@/components/ui";
+
+/** One line of context under each page title — tells you what you're looking at. */
+const SUBTITLE: Record<string, string> = {
+  overview: "نظرة سريعة على الأداء والمحادثات ومستوى الخدمة",
+  agents: "أداء كل موظف: المحادثات، زمن الرد من لحظة الإسناد، والحالات",
+  departments: "مقارنة المبيعات والعمليات والشكاوى",
+  conversations: "كل المحادثات مع الخط الزمني الكامل لكل واحدة",
+  campaigns: "كامبينات المبيعات والعمليات — ومين عمل كل كامبين",
+  sla: "الخروقات والمحادثات القريبة من خرق مستوى الخدمة",
+  fahd: "تسليمات بوت فهد للموظفين ونتيجة كل تسليم",
+  exports: "تصدير أي تقرير كملف CSV بنفس الفلاتر المطبقة",
+  settings: "الويبهوك، جلب البيانات، اختبار الاتصال، وإعدادات SLA",
+};
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, toggle } = useTheme();
+  const [spinning, setSpinning] = useState(false);
 
   const active = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
   const title = active?.labelAr ?? "لوحة التحليلات";
+  const subtitle = active ? SUBTITLE[active.key] : undefined;
 
-  const logout = async () => {
-    try {
-      await apiPost("/api/auth/logout");
-    } finally {
-      router.push("/login");
-      router.refresh();
-    }
+  const refresh = () => {
+    setSpinning(true);
+    router.refresh();
+    window.setTimeout(() => setSpinning(false), 600);
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-surface/90 px-4 py-3 backdrop-blur">
-      <div className="flex items-center gap-2">
-        <button onClick={onMenu} className="rounded-lg p-1.5 text-muted-foreground hover:bg-surface-2 lg:hidden cursor-pointer" aria-label="القائمة">
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border bg-surface/85 px-5 py-4 backdrop-blur-md">
+      <div className="flex min-w-0 items-center gap-3">
+        <button
+          onClick={onMenu}
+          className="cursor-pointer rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          aria-label="فتح القائمة"
+        >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="text-lg font-bold tracking-tight">{title}</h1>
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-extrabold tracking-tight text-foreground">{title}</h1>
+          {subtitle && <p className="truncate text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={toggle}
-          className="rounded-lg border border-border p-2 text-muted-foreground hover:text-foreground cursor-pointer"
-          aria-label={theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}
-        >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </button>
-        <button
-          onClick={logout}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:text-destructive cursor-pointer"
-        >
-          <LogOut className="h-4 w-4" /> خروج
-        </button>
-      </div>
+
+      <button
+        onClick={refresh}
+        className="btn-ghost shrink-0 px-3 py-2 text-xs"
+        aria-label="تحديث البيانات"
+      >
+        <RefreshCw className={cn("h-4 w-4", spinning && "animate-spin")} />
+        <span className="hidden sm:inline">تحديث</span>
+      </button>
     </header>
   );
 }

@@ -29,7 +29,7 @@ export default function DepartmentsPage() {
     { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "department", header: "القسم", render: (r) => <DepartmentPill department={r.department} /> },
     { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
-    { key: "waitingSeconds", header: "مدة الانتظار", render: (r) => <span className="tnum text-destructive">{formatDurationShort(r.waitingSeconds)}</span> },
+    { key: "waitingSeconds", header: "مدة الانتظار", render: (r) => <span className="tnum text-destructive-fg">{formatDurationShort(r.waitingSeconds)}</span> },
   ];
 
   return (

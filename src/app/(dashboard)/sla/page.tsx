@@ -6,36 +6,35 @@ import type { SlaResult } from "@/lib/reporting/sla";
 import type { SlaSettings } from "@/lib/settings";
 import { Kpi, Card, CardTitle, Section, LoadingBlock, ErrorState, DepartmentPill, StatusPill } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
-import { DonutChart, useChartColors } from "@/components/charts";
+import { DonutChart, CHART } from "@/components/charts";
 import { ExportButton } from "@/components/ExportButton";
 import { formatDurationShort, formatNumber } from "@/lib/format";
 
 export default function SlaPage() {
   const { data, loading, error } = useApiData<SlaResult & { settings: SlaSettings }>("/api/sla");
-  const c = useChartColors();
 
   if (loading) return <LoadingBlock />;
   if (error) return <ErrorState message={error} />;
   if (!data) return null;
 
   const donut = [
-    { name: "خرق", value: data.firstResponse.breached, color: c.danger },
-    { name: "قريبة", value: data.firstResponse.nearBreach, color: c.warning },
-    { name: "سليمة", value: data.firstResponse.healthy, color: c.success },
+    { name: "خرق", value: data.firstResponse.breached, color: CHART.rose },
+    { name: "قريبة", value: data.firstResponse.nearBreach, color: CHART.amber },
+    { name: "سليمة", value: data.firstResponse.healthy, color: CHART.emerald },
   ];
 
   const breachCols: Column<SlaResult["breachedList"][number]>[] = [
     { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
     { key: "department", header: "القسم", render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "responseSeconds", header: "زمن الرد", render: (r) => <span className="tnum text-destructive">{formatDurationShort(r.responseSeconds)}</span> },
+    { key: "responseSeconds", header: "زمن الرد", render: (r) => <span className="tnum text-destructive-fg">{formatDurationShort(r.responseSeconds)}</span> },
     { key: "status", header: "الحالة", render: (r) => <StatusPill status={r.status} /> },
   ];
   const nearCols: Column<SlaResult["nearBreachList"][number]>[] = [
     { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
     { key: "department", header: "القسم", render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "waitingSeconds", header: "مدة الانتظار", render: (r) => <span className="tnum text-warning">{formatDurationShort(r.waitingSeconds)}</span> },
+    { key: "waitingSeconds", header: "مدة الانتظار", render: (r) => <span className="tnum text-warning-fg">{formatDurationShort(r.waitingSeconds)}</span> },
   ];
 
   return (
@@ -63,9 +62,9 @@ export default function SlaPage() {
             لتعديل الأهداف انتقل إلى <Link href="/settings" className="text-primary hover:underline">الإعدادات</Link>.
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-destructive">{formatNumber(data.resolution.breached)}</div><div className="text-2xs text-muted-foreground">خرق الحل</div></div>
-            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-warning">{formatNumber(data.resolution.nearBreach)}</div><div className="text-2xs text-muted-foreground">قريبة</div></div>
-            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-success">{formatNumber(data.resolution.healthy)}</div><div className="text-2xs text-muted-foreground">سليمة</div></div>
+            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-destructive-fg">{formatNumber(data.resolution.breached)}</div><div className="text-2xs text-muted-foreground">خرق الحل</div></div>
+            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-warning-fg">{formatNumber(data.resolution.nearBreach)}</div><div className="text-2xs text-muted-foreground">قريبة</div></div>
+            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-success-fg">{formatNumber(data.resolution.healthy)}</div><div className="text-2xs text-muted-foreground">سليمة</div></div>
           </div>
         </Card>
       </div>

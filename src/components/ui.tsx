@@ -1,4 +1,5 @@
 import clsx, { type ClassValue } from "clsx";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { STATUS_LABELS_AR, SLA_LABELS_AR, DEPARTMENT_LABELS_AR, type Department, type SlaState } from "@/lib/constants";
 
 export function cn(...inputs: ClassValue[]): string {
@@ -6,18 +7,103 @@ export function cn(...inputs: ClassValue[]): string {
 }
 
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <div className={cn("card p-4", className)}>{children}</div>;
+  return <div className={cn("card p-5", className)}>{children}</div>;
 }
 
-export function CardTitle({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+export function CardTitle({
+  children,
+  action,
+  hint,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  hint?: string;
+}) {
   return (
-    <div className="mb-3 flex items-center justify-between gap-2">
-      <h3 className="text-sm font-semibold text-foreground">{children}</h3>
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h3 className="text-[15px] font-bold tracking-tight text-foreground">{children}</h3>
+        {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+      </div>
       {action}
     </div>
   );
 }
 
+/* ── Stat tile ─────────────────────────────────────────────────────────────
+   Icon chip + label + big number + optional sub / delta. This is the primary
+   KPI surface: four across, breathing room, one glance.                     */
+
+export type Tone = "brand" | "violet" | "success" | "warning" | "danger" | "neutral";
+
+const TONE_CHIP: Record<Tone, string> = {
+  brand: "bg-primary/10 text-primary",
+  violet: "bg-accent/10 text-accent",
+  success: "bg-success/10 text-success-fg",
+  warning: "bg-warning/10 text-warning-fg",
+  danger: "bg-destructive/10 text-destructive-fg",
+  neutral: "bg-muted text-muted-foreground",
+};
+
+export function StatTile({
+  label,
+  value,
+  sub,
+  icon,
+  tone = "brand",
+  delta,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  icon?: React.ReactNode;
+  tone?: Tone;
+  /** Percent change vs the previous period. Positive is not always good — see `deltaGood`. */
+  delta?: { value: number; good?: boolean } | null;
+}) {
+  return (
+    <div className="card card-hover p-5">
+      <div className="flex items-start justify-between gap-3">
+        <span className="label-muted">{label}</span>
+        {icon && (
+          <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", TONE_CHIP[tone])}>
+            {icon}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-end gap-2">
+        <span className="kpi-value text-foreground">{value}</span>
+        {delta && <DeltaPill value={delta.value} good={delta.good} />}
+      </div>
+
+      {sub !== undefined && sub !== null && <div className="mt-2 text-xs text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
+function DeltaPill({ value, good }: { value: number; good?: boolean }) {
+  if (!Number.isFinite(value) || value === 0) return null;
+  const up = value > 0;
+  // "good" decides the colour, not the direction — a rise in SLA breaches is bad.
+  const positive = good ?? up;
+  return (
+    <span
+      className={cn(
+        "mb-0.5 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-2xs font-bold tnum",
+        positive ? "bg-success/10 text-success-fg" : "bg-destructive/10 text-destructive-fg",
+      )}
+    >
+      {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+      {Math.abs(Math.round(value))}%
+    </span>
+  );
+}
+
+/**
+ * Plain stat card — same shell as StatTile but the value carries the tone.
+ * Used by the report pages that don't have a meaningful icon per metric.
+ */
 export function Kpi({
   label,
   value,
@@ -29,24 +115,48 @@ export function Kpi({
   sub?: React.ReactNode;
   tone?: "default" | "accent" | "danger" | "success" | "warning";
 }) {
-  const toneClass =
+  const valueTone =
     tone === "accent"
       ? "text-primary"
       : tone === "danger"
-        ? "text-destructive"
+        ? "text-destructive-fg"
         : tone === "success"
-          ? "text-success"
+          ? "text-success-fg"
           : tone === "warning"
-            ? "text-warning"
+            ? "text-warning-fg"
             : "text-foreground";
   return (
-    <div className="card p-4">
-      <div className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={cn("kpi-value mt-1", toneClass)}>{value}</div>
-      {sub !== undefined && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+    <div className="card card-hover p-5">
+      <div className="label-muted">{label}</div>
+      <div className={cn("kpi-value mt-3", valueTone)}>{value}</div>
+      {sub !== undefined && sub !== null && <div className="mt-2 text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }
+
+/** Compact stat used inside cards (no chrome). */
+export function MiniStat({ label, value, tone = "neutral" }: { label: string; value: React.ReactNode; tone?: Tone }) {
+  const color =
+    tone === "brand"
+      ? "text-primary"
+      : tone === "success"
+        ? "text-success-fg"
+        : tone === "warning"
+          ? "text-warning-fg"
+          : tone === "danger"
+            ? "text-destructive-fg"
+            : tone === "violet"
+              ? "text-accent"
+              : "text-foreground";
+  return (
+    <div className="rounded-xl bg-surface-2 p-3 text-center">
+      <div className={cn("text-lg font-bold tnum", color)}>{value}</div>
+      <div className="mt-0.5 text-2xs text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────── */
 
 export function Badge({
   children,
@@ -54,19 +164,21 @@ export function Badge({
   className,
 }: {
   children: React.ReactNode;
-  tone?: "muted" | "primary" | "success" | "warning" | "danger";
+  tone?: "muted" | "primary" | "success" | "warning" | "danger" | "violet";
   className?: string;
 }) {
   const tones: Record<string, string> = {
-    muted: "bg-surface-2 text-muted-foreground",
+    muted: "bg-muted text-muted-foreground",
     primary: "bg-primary/10 text-primary",
-    success: "bg-success/10 text-success",
-    warning: "bg-warning/10 text-warning",
-    danger: "bg-destructive/10 text-destructive",
+    violet: "bg-accent/10 text-accent",
+    success: "bg-success/10 text-success-fg",
+    warning: "bg-warning/10 text-warning-fg",
+    danger: "bg-destructive/10 text-destructive-fg",
   };
   return <span className={cn("badge", tones[tone], className)}>{children}</span>;
 }
 
+/** A dot + label pill — colour is never the only signal, the text carries it too. */
 export function StatusPill({ status }: { status: string | null | undefined }) {
   if (!status) return <span className="text-muted-foreground">—</span>;
   const tone = status === "open" ? "primary" : status === "resolved" ? "success" : status === "pending" ? "warning" : "muted";
@@ -86,13 +198,40 @@ export function DepartmentPill({ department }: { department: string | null | und
 
 export function NeedsReplyDot({ value }: { value: boolean }) {
   return value ? (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive">
-      <span className="h-1.5 w-1.5 rounded-full bg-destructive" /> يحتاج رد
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-destructive-fg">
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-60" />
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-destructive" />
+      </span>
+      يحتاج رد
     </span>
   ) : (
     <span className="text-xs text-muted-foreground">—</span>
   );
 }
+
+/** Round avatar with initials — gives agent tables a face, like the references. */
+export function Avatar({ name, className }: { name: string | null | undefined; className?: string }) {
+  const label = (name || "؟").trim();
+  const initials = label
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("");
+  return (
+    <span
+      className={cn(
+        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-2xs font-bold text-primary",
+        className,
+      )}
+      aria-hidden
+    >
+      {initials}
+    </span>
+  );
+}
+
+/* ── States ──────────────────────────────────────────────────────────────── */
 
 export function Spinner({ className }: { className?: string }) {
   return (
@@ -106,16 +245,30 @@ export function Spinner({ className }: { className?: string }) {
 
 export function LoadingBlock({ label = "جارٍ التحميل…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+    <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
       <Spinner /> {label}
+    </div>
+  );
+}
+
+/** Skeleton grid shown while the first payload is in flight. */
+export function SkeletonCards({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="card h-[110px] animate-pulse bg-surface-2/60" />
+      ))}
     </div>
   );
 }
 
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 p-10 text-center">
-      <div className="text-sm font-medium text-foreground">{title}</div>
+    <div className="flex flex-col items-center justify-center gap-1.5 p-12 text-center">
+      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-muted">
+        <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+      </div>
+      <div className="mt-1 text-sm font-semibold text-foreground">{title}</div>
       {hint && <div className="max-w-md text-xs text-muted-foreground">{hint}</div>}
     </div>
   );
@@ -123,18 +276,33 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
 
 export function ErrorState({ message }: { message: string }) {
   return (
-    <div className="rounded-card border border-destructive/30 bg-destructive/5 p-6 text-center text-sm text-destructive">
+    <div className="rounded-card border border-destructive/20 bg-destructive/5 p-6 text-center text-sm font-medium text-destructive-fg">
       {message}
     </div>
   );
 }
 
-/** Section wrapper with heading. */
-export function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
+/** Card with a bordered header — for tables. */
+export function Section({
+  title,
+  action,
+  hint,
+  children,
+  className,
+}: {
+  title: string;
+  action?: React.ReactNode;
+  hint?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <section className="card overflow-hidden">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <h3 className="text-sm font-semibold">{title}</h3>
+    <section className={cn("card overflow-hidden", className)}>
+      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-bold tracking-tight">{title}</h3>
+          {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+        </div>
         {action}
       </div>
       {children}

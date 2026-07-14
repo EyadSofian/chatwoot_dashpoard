@@ -13,7 +13,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onMenu={() => setOpen(true)} />
         <FilterBar />
-        <main className="flex-1 overflow-x-hidden p-4">{children}</main>
+        <main className="flex-1 overflow-x-hidden p-5 pb-10">
+          <div className="mx-auto max-w-[1600px] animate-fade-up">{children}</div>
+        </main>
       </div>
     </div>
   );
