@@ -128,14 +128,14 @@ export default function OverviewPage() {
         </Card>
 
         <Card>
-          <CardTitle hint="من الإسناد لأول رد">زمن الرد حسب القسم</CardTitle>
+          <CardTitle hint="من الإسناد إلى أول رد">زمن الرد حسب القسم</CardTitle>
           {deptChart.length ? <DeptResponseBar data={deptChart} /> : <EmptyState title="لا توجد بيانات" />}
         </Card>
       </div>
 
       {/* ── Agent load + late conversations ── */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <Section title="حمل الموظفين" hint="المفتوح حاليًا">
+        <Section title="حمل الموظفين" hint="المفتوحة حاليًا">
           <div className="overflow-x-auto">
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>

@@ -16,6 +16,8 @@ export interface ReportFilters {
   status?: string[];
   campaignSource?: string[];
   campaignLabel?: string[];
+  /** Chatwoot conversation labels. */
+  label?: string[];
   sla?: string[];
   needsReply?: boolean;
   search?: string;
@@ -62,6 +64,7 @@ export function parseFilters(searchParams: URLSearchParams): ReportFilters {
     status: strList(searchParams.get("status")),
     campaignSource: strList(searchParams.get("campaignSource")),
     campaignLabel: strList(searchParams.get("campaignLabel")),
+    label: strList(searchParams.get("label")),
     sla: strList(searchParams.get("sla")),
     needsReply: searchParams.get("needsReply") === "true" ? true : undefined,
     search: clean(searchParams.get("search")),
@@ -87,6 +90,8 @@ export function conversationWhere(f: ReportFilters, opts: { ignoreDate?: boolean
     where.campaignSource = { in: f.campaignSource };
   }
   if (f.campaignLabel?.length) where.campaignLabel = { in: f.campaignLabel };
+  // A conversation matches if it carries ANY of the selected labels.
+  if (f.label?.length) where.labels = { hasSome: f.label };
   if (f.needsReply) where.needsReply = true;
 
   // `slaFirstResponseState` is 'breached' | 'near_breach' | 'healthy', so the
@@ -122,6 +127,7 @@ export function filtersToQuery(f: ReportFilters): string {
   setList("status", f.status);
   setList("campaignSource", f.campaignSource);
   setList("campaignLabel", f.campaignLabel);
+  setList("label", f.label);
   setList("sla", f.sla);
 
   if (f.needsReply) p.set("needsReply", "true");

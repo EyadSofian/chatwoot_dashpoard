@@ -159,6 +159,43 @@ export function DonutChart({ data }: { data: { name: string; value: number; colo
   );
 }
 
+/** Compare labels (or anything named) side by side. Horizontal bars keep long
+ *  Arabic names readable instead of rotating them onto their side. */
+export function CompareBar({
+  data,
+  unit = "",
+}: {
+  data: { name: string; value: number; color?: string }[];
+  unit?: string;
+}) {
+  const mounted = useMounted();
+  const height = Math.max(200, data.length * 34 + 40);
+  if (!mounted) return <div style={{ height }} />;
+
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="4 4" stroke={CHART.grid} horizontal={false} />
+        <XAxis type="number" {...AXIS} axisLine={{ stroke: CHART.grid }} allowDecimals={false} />
+        <YAxis
+          type="category"
+          dataKey="name"
+          {...AXIS}
+          tick={{ ...AXIS.tick, fontSize: 12 }}
+          axisLine={false}
+          width={110}
+        />
+        <Tooltip {...TOOLTIP} formatter={(v: number) => [`${v}${unit}`, ""]} />
+        <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={16}>
+          {data.map((d, i) => (
+            <Cell key={i} fill={d.color || CATEGORICAL[i % CATEGORICAL.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 /** Legend rendered as text + swatch, so colour is never the only signal. */
 export function ChartLegend({ items }: { items: { name: string; value: number; color: string }[] }) {
   return (

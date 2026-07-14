@@ -94,6 +94,19 @@ model Inbox {
   @@map("inboxes")
 }
 
+/// Chatwoot label (GET /labels). Conversations carry label TITLES in
+/// `conversations.labels`, so the roster joins on title, not id.
+model Label {
+  id            Int      @id // chatwoot label id
+  title         String   @unique
+  description   String?
+  color         String?
+  showOnSidebar Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+
+  @@map("labels")
+}
+
 model Contact {
   id         Int      @id // chatwoot contact id
   name       String?

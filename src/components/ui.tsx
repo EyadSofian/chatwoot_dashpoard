@@ -62,23 +62,78 @@ export function StatTile({
   delta?: { value: number; good?: boolean } | null;
 }) {
   return (
-    <div className="card card-hover p-5">
-      <div className="flex items-start justify-between gap-3">
-        <span className="label-muted">{label}</span>
+    <div className="card card-hover p-4 sm:p-5">
+      {/*
+        On a phone the tile is ~168px wide. Sitting the icon beside the label
+        leaves the label ~90px and it wraps into a mess, so on mobile they stack
+        (icon, then label, then value) and only widen into a row from `sm` up.
+      */}
+      <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         {icon && (
-          <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", TONE_CHIP[tone])}>
+          <span
+            className={cn(
+              "order-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl sm:order-2 sm:h-9 sm:w-9",
+              TONE_CHIP[tone],
+            )}
+          >
             {icon}
           </span>
         )}
+        <span className="label-muted order-2 leading-snug sm:order-1">{label}</span>
       </div>
 
-      <div className="mt-3 flex items-end gap-2">
-        <span className="kpi-value text-foreground">{value}</span>
+      <div className="mt-2.5 flex items-end gap-2 sm:mt-3">
+        <span className="text-[22px] font-bold leading-none tracking-tight tnum text-foreground sm:text-[26px]">
+          {value}
+        </span>
         {delta && <DeltaPill value={delta.value} good={delta.good} />}
       </div>
 
-      {sub !== undefined && sub !== null && <div className="mt-2 text-xs text-muted-foreground">{sub}</div>}
+      {/* The caption is the first thing to go when there is no room for it. */}
+      {sub !== undefined && sub !== null && (
+        <div className="mt-2 hidden text-xs text-muted-foreground sm:block">{sub}</div>
+      )}
     </div>
+  );
+}
+
+const TONE_TEXT: Record<Tone, string> = {
+  brand: "text-primary",
+  violet: "text-accent",
+  success: "text-success-fg",
+  warning: "text-warning-fg",
+  danger: "text-destructive-fg",
+  neutral: "text-foreground",
+};
+
+/**
+ * A row of figures inside a card, separated by hairlines.
+ *
+ * Replaces the grid of filled sub-boxes this used to be: a card holding four
+ * rounded, shaded boxes reads as boxes-inside-boxes, and on a phone that is most
+ * of what you see. One outlined strip with dividers gives the same grouping with
+ * a quarter of the visual noise.
+ */
+export function StatStrip({
+  items,
+  className,
+}: {
+  items: { label: string; value: React.ReactNode; tone?: Tone }[];
+  className?: string;
+}) {
+  if (!items.length) return null;
+  return (
+    <dl
+      className={cn("grid divide-x divide-border overflow-hidden rounded-xl border border-border", className)}
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
+      {items.map((i) => (
+        <div key={i.label} className="min-w-0 px-1.5 py-2.5 text-center">
+          <dd className={cn("truncate text-sm font-bold tnum", TONE_TEXT[i.tone ?? "neutral"])}>{i.value}</dd>
+          <dt className="mt-0.5 truncate text-2xs text-muted-foreground">{i.label}</dt>
+        </div>
+      ))}
+    </dl>
   );
 }
 

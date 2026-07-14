@@ -22,6 +22,14 @@ export interface CwTeam {
   name?: string;
 }
 
+export interface CwLabel {
+  id: number;
+  title?: string;
+  description?: string;
+  color?: string;
+  show_on_sidebar?: boolean;
+}
+
 export interface CwInbox {
   id: number;
   name?: string;

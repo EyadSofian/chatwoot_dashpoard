@@ -14,6 +14,7 @@ const SUBTITLE: Record<string, string> = {
   departments: "مقارنة الأقسام",
   conversations: "كل المحادثات",
   campaigns: "الإرسال والردود",
+  labels: "أداء التصنيفات والمقارنة بينها",
   sla: "الخروقات والمتأخرات",
   fahd: "تسليمات البوت للموظفين",
   exports: "تصدير CSV بنفس الفلاتر",

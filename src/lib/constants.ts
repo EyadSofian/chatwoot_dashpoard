@@ -101,6 +101,7 @@ export const NAV_ITEMS = [
   { href: "/departments", key: "departments", labelAr: "الأقسام", labelEn: "Departments", icon: "Building2" },
   { href: "/conversations", key: "conversations", labelAr: "المحادثات", labelEn: "Conversations", icon: "MessagesSquare" },
   { href: "/campaigns", key: "campaigns", labelAr: "الكامبينات", labelEn: "Campaigns", icon: "Megaphone" },
+  { href: "/labels", key: "labels", labelAr: "Labels", labelEn: "Labels", icon: "Tags" },
   { href: "/sla", key: "sla", labelAr: "SLA", labelEn: "SLA", icon: "Gauge" },
   { href: "/fahd-bot", key: "fahd", labelAr: "Fahd Bot", labelEn: "Fahd Bot", icon: "Bot" },
   { href: "/exports", key: "exports", labelAr: "التصدير", labelEn: "Exports", icon: "Download" },
@@ -114,7 +115,7 @@ export type NavKey = (typeof NAV_ITEMS)[number]["key"];
  * kind of question you have, not the page name you half-remember.
  */
 export const NAV_GROUPS: { titleAr: string; keys: NavKey[] }[] = [
-  { titleAr: "التحليلات", keys: ["overview", "agents", "teams", "departments", "conversations", "campaigns"] },
+  { titleAr: "التحليلات", keys: ["overview", "agents", "teams", "departments", "conversations", "campaigns", "labels"] },
   { titleAr: "التشغيل", keys: ["sla", "fahd", "exports"] },
   { titleAr: "النظام", keys: ["settings"] },
 ];

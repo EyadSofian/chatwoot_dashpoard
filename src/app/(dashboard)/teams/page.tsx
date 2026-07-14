@@ -15,6 +15,7 @@ import {
   Section,
   SkeletonCards,
   StatTile,
+  StatStrip,
 } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
@@ -52,7 +53,7 @@ export default function TeamsPage() {
             {r.name}
           </div>
           {!r.hasActivity ? (
-            <div className="text-2xs text-muted-foreground">لا نشاط في الفترة المختارة</div>
+            <div className="text-2xs text-muted-foreground">لا يوجد نشاط في الفترة المختارة</div>
           ) : (
             r.department && <DepartmentPill department={r.department} />
           )}
@@ -133,7 +134,7 @@ export default function TeamsPage() {
 
       <Section
         title="أداء كل التيمات"
-        hint="الفترة بتحدد الأرقام، مش قائمة التيمات"
+        hint="الفترة تحدد الأرقام، لا قائمة التيمات"
         action={
           <div className="flex items-center gap-3">
             <label
@@ -175,7 +176,7 @@ export default function TeamsPage() {
                 emptyTitle={
                   activeOnly
                     ? "لا توجد تيمات نشطة في الفترة المختارة"
-                    : "لا توجد تيمات — شغّل Sync من الإعدادات"
+                    : "لا توجد تيمات — شغِّل Sync من الإعدادات"
                 }
               />
             </div>
@@ -216,36 +217,26 @@ export default function TeamsPage() {
 
                       {!r.hasActivity ? (
                         <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-                          لا نشاط في الفترة المختارة
+                          لا يوجد نشاط في الفترة المختارة
                         </p>
                       ) : (
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                            <div className="text-base font-bold tnum">{formatNumber(r.conversations)}</div>
-                            <div className="text-2xs text-muted-foreground">محادثات</div>
-                          </div>
-                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                            <div className="text-base font-bold tnum">{formatNumber(r.open)}</div>
-                            <div className="text-2xs text-muted-foreground">مفتوحة</div>
-                          </div>
-                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                            <div className="text-base font-bold tnum text-primary">
-                              {r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—"}
-                            </div>
-                            <div className="text-2xs text-muted-foreground">متوسط الرد</div>
-                          </div>
-                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                            <div
-                              className={cn(
-                                "text-base font-bold tnum",
-                                r.slaBreaches > 0 ? "text-destructive-fg" : "text-foreground",
-                              )}
-                            >
-                              {formatNumber(r.slaBreaches)}
-                            </div>
-                            <div className="text-2xs text-muted-foreground">خرق SLA</div>
-                          </div>
-                        </div>
+                        <StatStrip
+                          className="mt-3"
+                          items={[
+                            { label: "محادثات", value: formatNumber(r.conversations) },
+                            { label: "مفتوحة", value: formatNumber(r.open) },
+                            {
+                              label: "متوسط الرد",
+                              value: r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—",
+                              tone: "brand",
+                            },
+                            {
+                              label: "خرق SLA",
+                              value: formatNumber(r.slaBreaches),
+                              tone: r.slaBreaches > 0 ? "danger" : "neutral",
+                            },
+                          ]}
+                        />
                       )}
                     </button>
                   </li>
@@ -255,7 +246,7 @@ export default function TeamsPage() {
                 <li className="p-6 text-center text-sm text-muted-foreground">
                   {activeOnly
                     ? "لا توجد تيمات نشطة في الفترة المختارة"
-                    : "لا توجد تيمات — شغّل Sync من الإعدادات"}
+                    : "لا توجد تيمات — شغِّل Sync من الإعدادات"}
                 </li>
               )}
             </ul>

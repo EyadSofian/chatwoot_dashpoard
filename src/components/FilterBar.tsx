@@ -18,6 +18,7 @@ const FILTER_KEYS = [
   "status",
   "campaignSource",
   "campaignLabel",
+  "label",
   "sla",
   "needsReply",
   "search",
@@ -78,6 +79,7 @@ export function FilterBar() {
       { value: "operations", label: "العمليات" },
     ],
     campaignLabel: (o?.campaignLabels ?? []).map((l) => ({ value: l, label: l })),
+    label: (o?.labels ?? []).map((l) => ({ value: l.title, label: l.title })),
     sla: [
       { value: "breached", label: "خرق" },
       { value: "near_breach", label: "قريب" },
@@ -95,6 +97,7 @@ export function FilterBar() {
     { key: "status", label: "الحالة", options: O.status },
     { key: "campaignSource", label: "مصدر الكامبين", options: O.campaignSource },
     { key: "campaignLabel", label: "الكامبين", options: O.campaignLabel },
+    { key: "label", label: "Labels", options: O.label },
     { key: "sla", label: "SLA", options: O.sla },
   ];
 
@@ -178,7 +181,7 @@ export function FilterBar() {
             />
             <input
               defaultValue={get("search")}
-              placeholder="اسم، رقم، أو رقم محادثة"
+              placeholder="الاسم أو الهاتف أو رقم المحادثة"
               onKeyDown={(e) => {
                 if (e.key === "Enter") setParams({ search: (e.target as HTMLInputElement).value });
               }}

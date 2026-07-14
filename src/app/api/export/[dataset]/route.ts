@@ -6,6 +6,7 @@ import { parseFilters } from "@/lib/reporting/filters";
 import { conversationWhere } from "@/lib/reporting/filters";
 import { getAgentLeaderboard } from "@/lib/reporting/agents";
 import { getTeams, getTeamMembers, getTeamConversations } from "@/lib/reporting/teams";
+import { getLabels } from "@/lib/reporting/labels";
 import { getDepartments } from "@/lib/reporting/departments";
 import { getCampaigns } from "@/lib/reporting/campaigns";
 import { getSla } from "@/lib/reporting/sla";
@@ -154,6 +155,27 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
       return csvResponse(toCsv(rows, columns), `team-${teamId}-conversations.csv`);
     }
 
+    case "labels": {
+      // Every label, zeros included — same roster the screen shows.
+      const { rows } = await getLabels(filters);
+      const columns: CsvColumn<(typeof rows)[number]>[] = [
+        { key: "title", label: "Label" },
+        { key: "conversations", label: "محادثات" },
+        { key: "share", label: "النسبة", format: (r) => `${(r.share * 100).toFixed(1)}%` },
+        { key: "open", label: "مفتوحة" },
+        { key: "pending", label: "منتظرة" },
+        { key: "resolved", label: "محلولة" },
+        { key: "replied", label: "تم الرد" },
+        { key: "needsReply", label: "تحتاج رد" },
+        { key: "avgResponseSeconds", label: "متوسط الرد (ث)" },
+        { key: "medianResponseSeconds", label: "وسيط الرد (ث)" },
+        { key: "avgResolutionSeconds", label: "متوسط الإغلاق (ث)" },
+        { key: "slaBreaches", label: "خرق SLA" },
+        { key: "lastActivityAt", label: "آخر نشاط", format: (r) => iso(r.lastActivityAt) },
+      ];
+      return csvResponse(toCsv(rows, columns), "labels.csv");
+    }
+
     case "departments": {
       const { rows } = await getDepartments(filters);
       const columns: CsvColumn<(typeof rows)[number]>[] = [
@@ -173,7 +195,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
       const columns: CsvColumn<(typeof rows)[number]>[] = [
         { key: "label", label: "الكامبين" },
         { key: "template", label: "القالب" },
-        { key: "operatorName", label: "مين عمل الكامبين" },
+        { key: "operatorName", label: "منشئ الكامبين" },
         { key: "sourceKey", label: "المصدر" },
         { key: "inboxName", label: "القناة" },
         { key: "status", label: "الحالة" },

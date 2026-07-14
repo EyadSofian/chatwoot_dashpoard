@@ -54,12 +54,12 @@ function MetadataSyncCard() {
     setError(null);
     setResult(null);
     try {
-      const res = await apiPost<{ state: { agents: number; teams: number; inboxes: number; memberships: number } }>(
+      const res = await apiPost<{ state: { agents: number; teams: number; inboxes: number; memberships: number; labels: number } }>(
         "/api/sync/metadata",
         body,
       );
       const s = res.state;
-      setResult(`${s.agents} موظف · ${s.teams} تيم · ${s.memberships} عضوية · ${s.inboxes} قناة`);
+      setResult(`${s.agents} موظف · ${s.teams} تيم · ${s.memberships} عضوية · ${s.inboxes} قناة · ${s.labels} label`);
       reload();
     } catch (err) {
       setError((err as Error).message);
@@ -72,6 +72,7 @@ function MetadataSyncCard() {
     { label: "Sync Agents", body: { agents: true } },
     { label: "Sync Teams", body: { teams: true } },
     { label: "Sync Inboxes", body: { inboxes: true } },
+    { label: "Sync Labels", body: { labels: true } },
   ];
 
   return (
@@ -92,7 +93,7 @@ function MetadataSyncCard() {
 
       {data && !data.synced && (
         <div className="mb-3 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-xs font-semibold text-warning-fg">
-          لسه متعملتش. الموظفين والتيمات مش هيظهروا قبلها.
+          لم تُنفَّذ بعد. لن يظهر الموظفون والتيمات قبلها.
         </div>
       )}
 
@@ -129,7 +130,7 @@ function MetadataSyncCard() {
       {result && <p className="mt-2 text-xs font-semibold text-success-fg">تم: {result}</p>}
       {error && <p className="mt-2 text-xs font-semibold text-destructive-fg">{error}</p>}
       <p className="mt-2 text-2xs text-muted-foreground">
-        Backfill بيشغّلها تلقائيًا في الأول.
+        يُشغِّلها Backfill تلقائيًا في البداية.
       </p>
     </Card>
   );

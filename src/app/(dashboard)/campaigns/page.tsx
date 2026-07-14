@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Megaphone, MessageSquareReply, Timer } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import type { CampaignsResult, CampaignRow } from "@/lib/reporting/campaigns";
-import { Section, LoadingBlock, ErrorState, Badge, cn, StatTile, SkeletonCards, Meter } from "@/components/ui";
+import { Section, LoadingBlock, ErrorState, Badge, cn, StatTile, StatStrip, SkeletonCards, Meter } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { CampaignDrawer } from "@/components/CampaignDrawer";
@@ -29,12 +29,12 @@ function StateNote({ row }: { row: CampaignRow }) {
   if (row.dataState === "not_reconciled") {
     return (
       <span className="text-2xs font-semibold text-warning-fg">
-        الإرسال متزامن، لسه مش متطابق مع رسائل Chatwoot
+        تمت مزامنة الإرسال، ولم تُطابَق برسائل Chatwoot بعد
       </span>
     );
   }
   if (row.dataState === "no_replies") {
-    return <span className="text-2xs text-muted-foreground">مفيش ردود من العملاء</span>;
+    return <span className="text-2xs text-muted-foreground">لا توجد ردود من العملاء</span>;
   }
   return null;
 }
@@ -63,7 +63,7 @@ export default function CampaignsPage() {
     },
     {
       key: "operatorName",
-      header: "مين عمل الكامبين",
+      header: "منشئ الكامبين",
       render: (r) => <span className="font-semibold text-primary">{r.operatorName || "—"}</span>,
     },
     {
@@ -173,7 +173,7 @@ export default function CampaignsPage() {
         <div className="flex items-center gap-3 rounded-card border border-warning/30 bg-warning/5 px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning-fg" aria-hidden />
           <p className="text-sm font-semibold text-warning-fg">
-            تطبيق الكامبين مش متزامن — شغّل Campaign Sync من الإعدادات.
+            تطبيق الكامبينات غير متزامن — شغِّل Campaign Sync من الإعدادات.
           </p>
         </div>
       )}
@@ -182,7 +182,7 @@ export default function CampaignsPage() {
         <div className="flex items-center gap-3 rounded-card border border-border bg-muted px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <p className="text-xs text-muted-foreground">
-            {formatNumber(t.unmatched)} مستلم غير مرتبط برسالة Chatwoot — مستبعدين من القياس.
+            {formatNumber(t.unmatched)} مستلمون غير مرتبطين برسالة Chatwoot — مستبعدون من القياس.
           </p>
         </div>
       )}
@@ -226,7 +226,7 @@ export default function CampaignsPage() {
                 rows={rows}
                 getKey={(r) => `${r.sourceKey}:${r.jobId}`}
                 onRowClick={(r) => setSelected({ source: r.sourceKey, jobId: r.jobId })}
-                emptyTitle="لا توجد كامبينات — شغّل Campaign Sync من الإعدادات"
+                emptyTitle="لا توجد كامبينات — شغِّل Campaign Sync من الإعدادات"
               />
             </div>
 
@@ -248,25 +248,16 @@ export default function CampaignsPage() {
                       </Badge>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                        <div className="text-base font-bold tnum">{formatNumber(r.sent)}</div>
-                        <div className="text-2xs text-muted-foreground">تم الإرسال</div>
-                      </div>
-                      <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                        <div className="text-base font-bold tnum text-success-fg">{formatNumber(r.customerReplies)}</div>
-                        <div className="text-2xs text-muted-foreground">رد العملاء</div>
-                      </div>
-                      <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                        <div className="text-base font-bold tnum text-primary">{formatPercent(r.replyRate, 1)}</div>
-                        <Meter value={r.replyRate} className="my-1" />
-                        <div className="text-2xs text-muted-foreground">نسبة الرد</div>
-                      </div>
-                      <div className="rounded-xl bg-surface-2 p-2.5 text-center">
-                        <div className="text-base font-bold tnum">{formatNumber(r.teamReplied)}</div>
-                        <div className="text-2xs text-muted-foreground">رد الفريق</div>
-                      </div>
-                    </div>
+                    <StatStrip
+                      className="mt-3"
+                      items={[
+                        { label: "أُرسل", value: formatNumber(r.sent) },
+                        { label: "رد العملاء", value: formatNumber(r.customerReplies), tone: "success" },
+                        { label: "نسبة الرد", value: formatPercent(r.replyRate, 1), tone: "brand" },
+                        { label: "رد الفريق", value: formatNumber(r.teamReplied) },
+                      ]}
+                    />
+                    <Meter value={r.replyRate} className="mt-2" />
 
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StateNote row={r} />
@@ -277,7 +268,7 @@ export default function CampaignsPage() {
               ))}
               {!rows.length && (
                 <li className="p-6 text-center text-sm text-muted-foreground">
-                  لا توجد كامبينات — شغّل Campaign Sync من الإعدادات
+                  لا توجد كامبينات — شغِّل Campaign Sync من الإعدادات
                 </li>
               )}
             </ul>

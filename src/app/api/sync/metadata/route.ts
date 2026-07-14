@@ -13,6 +13,7 @@ const schema = z.object({
   agents: z.boolean().optional(),
   teams: z.boolean().optional(),
   inboxes: z.boolean().optional(),
+  labels: z.boolean().optional(),
 });
 
 /** Current sync state — drives the "sync first" warning and the Settings screen. */

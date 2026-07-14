@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/env";
 import { ChatwootClient, getPayload } from "@/lib/chatwoot/client";
 import { normalizeDepartmentText } from "@/lib/metrics/department";
-import type { CwAgent, CwInbox, CwTeam } from "@/lib/chatwoot/types";
+import type { CwAgent, CwInbox, CwLabel, CwTeam } from "@/lib/chatwoot/types";
 
 export const METADATA_SYNC_KEY = "chatwoot_metadata_sync";
 
@@ -12,12 +12,14 @@ export interface MetadataSyncState {
   teams: number;
   inboxes: number;
   memberships: number;
+  labels: number;
 }
 
 export interface SyncOptions {
   agents?: boolean;
   teams?: boolean;
   inboxes?: boolean;
+  labels?: boolean;
 }
 
 function teamDepartment(team: CwTeam): string {
@@ -118,15 +120,37 @@ async function syncTeams(client: ChatwootClient): Promise<{ teams: number; membe
   return { teams: teams.length, memberships };
 }
 
-/** Sync Chatwoot metadata (agents, teams + members, inboxes) into the local tables. */
+/**
+ * Labels. Conversations store label TITLES, so this roster is what lets a label
+ * with no traffic in the window still appear — same rule as agents and teams.
+ */
+async function syncLabels(client: ChatwootClient): Promise<number> {
+  const res = await client.listLabels().catch(() => ({ payload: [] as CwLabel[] }));
+  const labels = getPayload<CwLabel>(res);
+
+  for (const l of labels) {
+    if (typeof l.id !== "number" || !l.title) continue;
+    const data = {
+      title: l.title,
+      description: l.description ?? null,
+      color: l.color ?? null,
+      showOnSidebar: l.show_on_sidebar !== false,
+    };
+    await prisma.label.upsert({ where: { id: l.id }, create: { id: l.id, ...data }, update: data });
+  }
+  return labels.length;
+}
+
+/** Sync Chatwoot metadata (agents, teams + members, inboxes, labels) into the local tables. */
 export async function syncEntities(
   client: ChatwootClient,
   opts: SyncOptions = {},
 ): Promise<MetadataSyncState> {
-  const all = !opts.agents && !opts.teams && !opts.inboxes;
+  const all = !opts.agents && !opts.teams && !opts.inboxes && !opts.labels;
 
   const agents = all || opts.agents ? await syncAgents(client) : 0;
   const inboxes = all || opts.inboxes ? await syncInboxes(client) : 0;
+  const labels = all || opts.labels ? await syncLabels(client) : 0;
   const teamResult = all || opts.teams ? await syncTeams(client) : { teams: 0, memberships: 0 };
 
   const state: MetadataSyncState = {
@@ -135,6 +159,7 @@ export async function syncEntities(
     teams: teamResult.teams,
     inboxes,
     memberships: teamResult.memberships,
+    labels,
   };
 
   await prisma.appSetting.upsert({
@@ -148,10 +173,11 @@ export async function syncEntities(
 
 /** Has Chatwoot metadata ever been synced? Drives the "sync first" warning. */
 export async function getMetadataSyncState(): Promise<MetadataSyncState & { synced: boolean }> {
-  const [row, agents, teams] = await Promise.all([
+  const [row, agents, teams, labels] = await Promise.all([
     prisma.appSetting.findUnique({ where: { key: METADATA_SYNC_KEY } }).catch(() => null),
     prisma.agent.count().catch(() => 0),
     prisma.team.count().catch(() => 0),
+    prisma.label.count().catch(() => 0),
   ]);
 
   const saved = (row?.value ?? null) as MetadataSyncState | null;
@@ -159,6 +185,7 @@ export async function getMetadataSyncState(): Promise<MetadataSyncState & { sync
     lastSyncAt: saved?.lastSyncAt ?? null,
     agents,
     teams,
+    labels,
     inboxes: saved?.inboxes ?? 0,
     memberships: saved?.memberships ?? 0,
     // Rows in the tables count as synced even if the marker predates this build.

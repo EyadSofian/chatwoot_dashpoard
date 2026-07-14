@@ -9,6 +9,7 @@ import {
   Bot,
   Download,
   Settings,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ const MAP: Record<string, LucideIcon> = {
   Bot,
   Download,
   Settings,
+  Tags,
 };
 
 export function NavIcon({ name, className }: { name: string; className?: string }) {

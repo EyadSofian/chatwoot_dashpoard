@@ -51,7 +51,7 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
           {j && (
             <>
               <div className="mb-3 rounded-lg border border-border bg-surface-2/40 p-3">
-                <div className="text-2xs text-muted-foreground">مين عمل الكامبين</div>
+                <div className="text-2xs text-muted-foreground">منشئ الكامبين</div>
                 <div className="text-base font-bold text-primary">{j.operatorName || "غير معروف"}</div>
                 <div className="mt-1 text-2xs text-muted-foreground">{formatDateTime(j.createdAtApp)} · {j.inboxName || ""}</div>
               </div>
