@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { attrDedupeKey } from "@/lib/campaigns/correlate";
 import type { AssembledConversation } from "@/lib/metrics/conversation";
 
 /**
@@ -105,22 +106,37 @@ export async function persistConversation(assembled: AssembledConversation): Pro
     },
   });
 
-  // Campaign reply correlation.
+  // Campaign reply — the ATTRIBUTE-derived read, kept as a diagnostic fallback.
+  //
+  // It is approximate: conversation custom attributes carry a label, not the id
+  // of the message that was actually sent, so "the customer replied after the
+  // campaign" is inferred rather than measured. The precise numbers come from
+  // campaigns/reconcile.ts, which anchors on the real outbound template message
+  // and writes rows keyed `job:<jobId>:conv:<id>`. These rows key on `attr:…`,
+  // so the two never collide and the reports (which read job-linked rows only)
+  // never count the same reply twice.
   if (assembled.campaignReply) {
     const cr = assembled.campaignReply;
+    const dedupeKey = attrDedupeKey(conversationCwId, cr.campaignLabel);
+    const data = {
+      conversationId,
+      conversationCwId,
+      campaignLabel: cr.campaignLabel,
+      campaignSource: cr.campaignSource,
+      template: cr.template,
+      replyAt: cr.replyAt,
+      firstAgentReplyAt: cr.firstAgentReplyAt,
+      responseSeconds: cr.responseSeconds,
+      assigned: cr.assigned,
+      assigneeCwId: cr.assigneeCwId,
+      assigneeName: cr.assigneeName,
+      correlationMethod: "attribute_fallback",
+      confidence: "low",
+    };
     await prisma.campaignReply.upsert({
-      where: { conversationCwId_campaignLabel: { conversationCwId, campaignLabel: cr.campaignLabel } },
-      create: { conversationId, ...cr },
-      update: {
-        campaignSource: cr.campaignSource,
-        template: cr.template,
-        replyAt: cr.replyAt,
-        firstAgentReplyAt: cr.firstAgentReplyAt,
-        responseSeconds: cr.responseSeconds,
-        assigned: cr.assigned,
-        assigneeCwId: cr.assigneeCwId,
-        assigneeName: cr.assigneeName,
-      },
+      where: { dedupeKey },
+      create: { dedupeKey, ...data },
+      update: data,
     });
   }
 

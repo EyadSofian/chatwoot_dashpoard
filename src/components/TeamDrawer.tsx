@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
@@ -40,6 +40,20 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
   const [agentFilter, setAgentFilter] = useState<number | null>(null);
   const [page, setPage] = useState(1);
 
+  // Esc closes, and the page behind must not scroll while the sheet is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose]);
+
   const { data, loading, error } = useApiData<TeamDetail>(`/api/teams/${teamId}`);
   const { data: convs, loading: convsLoading } = useApiData<TeamConversations>(
     `/api/teams/${teamId}/conversations`,
@@ -60,23 +74,35 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-navy/30 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0 z-50 bg-navy/40 backdrop-blur-sm" onClick={onClose} aria-hidden />
+      {/*
+        Mobile: fullscreen sheet — a 620px drawer on a 375px screen is a squeeze,
+        not a report. Desktop: a side sheet anchored on the LEFT, the opposite
+        edge from the RTL sidebar, so the two never fight for the same space.
+      */}
       <aside
-        className="fixed inset-y-0 z-50 flex w-full max-w-[620px] flex-col border-e border-border bg-surface shadow-pop"
+        className={cn(
+          "fixed z-50 flex flex-col border-border bg-surface shadow-pop",
+          "inset-0 h-[100dvh] w-full",
+          "lg:inset-y-0 lg:start-auto lg:h-[100dvh] lg:w-full lg:max-w-[640px] lg:border-e",
+        )}
         style={{ left: 0 }}
         role="dialog"
+        aria-modal="true"
         aria-label={teamName}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-extrabold tracking-tight">{teamName}</h2>
-            <p className="text-xs text-muted-foreground">
-              {row ? `${formatNumber(row.memberCount)} عضو · ${formatNumber(row.conversations)} محادثة في الفترة` : "…"}
+            <p className="truncate text-xs text-muted-foreground">
+              {row
+                ? `${data?.team?.department ?? row.department ?? "—"} · ${formatNumber(row.memberCount)} عضو · ${formatNumber(row.conversations)} محادثة في الفترة`
+                : "…"}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="cursor-pointer rounded-xl border border-border p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="إغلاق"
           >
             <X className="h-4 w-4" />
@@ -127,84 +153,79 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                 </a>
               </div>
 
+              {/*
+                Rows, not a table. Six numeric columns cannot be read on a phone,
+                and tapping a member filters the conversation list below to their
+                work INSIDE this team.
+              */}
               {data.members.length === 0 ? (
                 <EmptyState title="لا يوجد أعضاء" hint="نفّذ مزامنة التيمات من الإعدادات." />
               ) : (
-                <div className="mb-6 overflow-x-auto rounded-card border border-border">
-                  <table className="w-full border-separate border-spacing-0 text-sm">
-                    <thead>
-                      <tr>
-                        {["الموظف", "مُسند", "تم الرد", "تحتاج رد", "متوسط الرد", "خرق"].map((h, i) => (
-                          <th
-                            key={h}
-                            className={cn(
-                              "border-b border-border bg-surface-2 px-3 py-2.5 text-2xs font-bold uppercase text-muted-foreground",
-                              i === 0 ? "text-start" : "text-end",
-                            )}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.members.map((m) => {
-                        const selected = agentFilter === m.agentId;
-                        return (
-                          <tr
-                            key={m.agentId}
-                            onClick={() => setAgentFilter(selected ? null : m.agentId)}
-                            className={cn(
-                              "cursor-pointer transition-colors",
-                              selected ? "bg-primary/[0.07]" : "hover:bg-primary/[0.035]",
-                            )}
-                          >
-                            <td className="border-b border-border/70 px-3 py-2.5">
-                              <div className="flex items-center gap-2">
-                                <Avatar name={m.name} className="h-7 w-7" />
-                                <div className="min-w-0">
-                                  <div
-                                    className={cn(
-                                      "truncate font-semibold",
-                                      m.hasActivity ? "text-foreground" : "text-muted-foreground",
-                                    )}
-                                  >
-                                    {m.name}
-                                  </div>
-                                  {!m.hasActivity && <div className="text-2xs text-muted-foreground">لا نشاط</div>}
-                                </div>
+                <ul className="mb-6 space-y-2">
+                  {data.members.map((m) => {
+                    const selected = agentFilter === m.agentId;
+                    return (
+                      <li key={m.agentId}>
+                        <button
+                          onClick={() => setAgentFilter(selected ? null : m.agentId)}
+                          aria-pressed={selected}
+                          className={cn(
+                            "w-full cursor-pointer rounded-xl border p-3 text-start transition-colors",
+                            selected
+                              ? "border-primary/40 bg-primary/5"
+                              : "border-border bg-surface hover:border-primary/30 hover:bg-muted",
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Avatar name={m.name} className="h-9 w-9" />
+                            <div className="min-w-0 flex-1">
+                              <div
+                                className={cn(
+                                  "truncate font-semibold",
+                                  m.hasActivity ? "text-foreground" : "text-muted-foreground",
+                                )}
+                              >
+                                {m.name}
                               </div>
-                            </td>
-                            <td className="border-b border-border/70 px-3 py-2.5 text-end tnum font-semibold">
-                              {formatNumber(m.assigned)}
-                            </td>
-                            <td className="border-b border-border/70 px-3 py-2.5 text-end tnum">
-                              {formatNumber(m.replied)}
-                            </td>
-                            <td
-                              className={cn(
-                                "border-b border-border/70 px-3 py-2.5 text-end tnum",
-                                m.needsReply > 0 && "font-bold text-destructive-fg",
+                              {!m.hasActivity && (
+                                <div className="text-2xs text-muted-foreground">لا نشاط في الفترة</div>
                               )}
-                            >
-                              {formatNumber(m.needsReply)}
-                            </td>
-                            <td className="border-b border-border/70 px-3 py-2.5 text-end">
-                              {dur(m.avgResponseSeconds)}
-                            </td>
-                            <td className="border-b border-border/70 px-3 py-2.5 text-end">
-                              {m.slaBreaches ? (
-                                <Badge tone="danger">{formatNumber(m.slaBreaches)}</Badge>
-                              ) : (
-                                <span className="tnum text-muted-foreground">0</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                            </div>
+                            {m.slaBreaches > 0 && <Badge tone="danger">{formatNumber(m.slaBreaches)} خرق</Badge>}
+                          </div>
+
+                          {m.hasActivity && (
+                            <dl className="mt-2.5 grid grid-cols-4 gap-2 text-center">
+                              <div>
+                                <dd className="text-sm font-bold tnum">{formatNumber(m.assigned)}</dd>
+                                <dt className="text-2xs text-muted-foreground">مُسند</dt>
+                              </div>
+                              <div>
+                                <dd className="text-sm font-bold tnum">{formatNumber(m.replied)}</dd>
+                                <dt className="text-2xs text-muted-foreground">تم الرد</dt>
+                              </div>
+                              <div>
+                                <dd
+                                  className={cn(
+                                    "text-sm font-bold tnum",
+                                    m.needsReply > 0 && "text-destructive-fg",
+                                  )}
+                                >
+                                  {formatNumber(m.needsReply)}
+                                </dd>
+                                <dt className="text-2xs text-muted-foreground">تحتاج رد</dt>
+                              </div>
+                              <div>
+                                <dd className="text-sm font-bold tnum">{dur(m.avgResponseSeconds)}</dd>
+                                <dt className="text-2xs text-muted-foreground">متوسط الرد</dt>
+                              </div>
+                            </dl>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
 
               {/* Conversations */}

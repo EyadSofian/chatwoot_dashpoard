@@ -353,9 +353,12 @@ model CampaignJob {
   lastError          String?
   raw                Json?
   syncedAt           DateTime @default(now())
+  /// Last time recipients were matched to Chatwoot messages and replies derived.
+  reconciledAt       DateTime?
 
   source     CampaignSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   recipients CampaignRecipient[]
+  replies    CampaignReply[]
 
   @@unique([sourceKey, jobId])
   @@index([sourceKey, createdAtApp])
@@ -377,34 +380,67 @@ model CampaignRecipient {
   errorCode      String?
   errorDescription String?
 
-  job CampaignJob @relation(fields: [campaignJobId], references: [id], onDelete: Cascade)
+  /// created_at of the outbound template message (resolved during reconciliation).
+  sentAt           DateTime?
+  /// matched | message_missing | no_conversation | not_sent
+  correlationState String?
+
+  job     CampaignJob     @relation(fields: [campaignJobId], references: [id], onDelete: Cascade)
+  replies CampaignReply[]
 
   @@unique([campaignJobId, phone])
   @@index([conversationCwId])
   @@index([sourceKey, jobId])
+  @@index([campaignJobId, status])
+  @@index([messageCwId])
   @@map("campaign_recipients")
 }
 
-/// A customer reply on a campaign conversation + the agent response time.
+/// A customer reply to a specific campaign SEND, plus the agent's response time.
+///
+/// Keyed to the job/recipient that produced it — never to the label. A label is
+/// re-used across campaigns and the same customer can be messaged by several, so
+/// `[conversationCwId, campaignLabel]` merged rows that were never the same send.
 model CampaignReply {
   id             BigInt   @id @default(autoincrement())
   conversationId BigInt
   conversationCwId Int
-  campaignLabel  String
-  campaignSource String? // sales | operations
+
+  /// The send this reply answers. Null only for attribute-fallback rows.
+  campaignJobId       BigInt?
+  campaignRecipientId BigInt?
+  /// Chatwoot id of the outbound template message we measured from.
+  campaignMessageCwId Int?
+  /// When that template actually left — anything before it is not a reply to it.
+  sentAt              DateTime?
+
+  /// message_id (exact) | attribute_fallback (approximate) | unmatched
+  correlationMethod String @default("attribute_fallback")
+  /// high | low — keeps approximate rows out of the precise numbers.
+  confidence        String @default("low")
+  /// `job:<jobId>:conv:<id>` or `attr:<conv>:<label>` — makes re-runs idempotent.
+  dedupeKey         String @unique
+
+  campaignLabel  String?
+  campaignSource String? // sales | operations — from CampaignJob.sourceKey
   template       String?
-  replyAt        DateTime? // first customer reply after send
+  replyAt        DateTime? // first public incoming customer message after sentAt
   firstAgentReplyAt DateTime?
-  responseSeconds Int?
+  responseSeconds Int? // customer reply → first human agent reply
   assigned       Boolean  @default(false)
   assigneeCwId   Int?
   assigneeName   String?
+  updatedAt      DateTime @updatedAt
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  job          CampaignJob?       @relation(fields: [campaignJobId], references: [id], onDelete: SetNull)
+  recipient    CampaignRecipient? @relation(fields: [campaignRecipientId], references: [id], onDelete: SetNull)
 
-  @@unique([conversationCwId, campaignLabel])
+  @@unique([campaignJobId, conversationCwId])
+  @@index([campaignJobId])
   @@index([campaignSource])
   @@index([campaignLabel])
+  @@index([correlationMethod])
   @@map("campaign_replies")
 }
 

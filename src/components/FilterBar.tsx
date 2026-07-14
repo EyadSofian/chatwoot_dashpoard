@@ -168,8 +168,12 @@ export function FilterBar() {
           )}
         </div>
 
+        {/*
+          Desktop: the filters unfold inline. Mobile: they live in a bottom sheet,
+          because eight selects wrapped across a 375px screen is not a filter bar.
+        */}
         {(expanded || activeCount > 0) && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden flex-wrap items-center gap-2 lg:flex">
             <FilterSelect
               label="القسم"
               value={get("department")}
@@ -251,8 +255,134 @@ export function FilterBar() {
           </div>
         )}
       </div>
+
+      {/* Mobile bottom sheet */}
+      {expanded && (
+        <div className="lg:hidden">
+          <div className="fixed inset-0 z-40 bg-navy/40 backdrop-blur-sm" onClick={() => setExpanded(false)} aria-hidden />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="فلترة"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[80dvh] overflow-y-auto rounded-t-3xl border-t border-border bg-surface p-5 pb-8 shadow-pop"
+          >
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" aria-hidden />
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold">فلترة</h2>
+              <button
+                onClick={() => setExpanded(false)}
+                className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground"
+                aria-label="إغلاق"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {SHEET_FILTERS(options).map((f) => (
+                <FilterSelect
+                  key={f.label}
+                  label={f.label}
+                  value={get(f.param)}
+                  onChange={(v) => setParams({ [f.param]: v })}
+                  options={f.options}
+                  block
+                />
+              ))}
+
+              <label
+                className={cn(
+                  "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
+                  get("needsReply") === "true"
+                    ? "border-destructive/30 bg-destructive/5 text-destructive-fg"
+                    : "border-border bg-surface text-muted-foreground",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 cursor-pointer accent-current"
+                  checked={get("needsReply") === "true"}
+                  onChange={(e) => setParams({ needsReply: e.target.checked ? "true" : undefined })}
+                />
+                يحتاج رد فقط
+              </label>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => {
+                  router.replace(pathname, { scroll: false });
+                  setExpanded(false);
+                }}
+                className="btn-ghost min-h-11 flex-1"
+              >
+                مسح الكل
+              </button>
+              <button onClick={() => setExpanded(false)} className="btn-primary min-h-11 flex-1">
+                تطبيق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** The same filter set the desktop row shows, as data — so the two cannot drift. */
+function SHEET_FILTERS(options: FilterOptions | null) {
+  return [
+    {
+      param: "department",
+      label: "القسم",
+      options: (options?.departments ?? []).map((d) => ({
+        value: d,
+        label: DEPARTMENT_LABELS_AR[d as Department] ?? d,
+      })),
+    },
+    {
+      param: "teamId",
+      label: "التيم",
+      options: (options?.teams ?? []).map((t) => ({ value: String(t.id), label: t.name })),
+    },
+    {
+      param: "agentId",
+      label: "الموظف",
+      options: (options?.agents ?? []).map((a) => ({ value: String(a.id), label: a.name })),
+    },
+    {
+      param: "inboxId",
+      label: "الانبوكس",
+      options: (options?.inboxes ?? []).map((i) => ({ value: String(i.id), label: i.name })),
+    },
+    {
+      param: "status",
+      label: "حالة المحادثة",
+      options: ["open", "pending", "resolved", "snoozed"].map((s) => ({ value: s, label: STATUS_LABELS_AR[s] ?? s })),
+    },
+    {
+      param: "campaignSource",
+      label: "مصدر الكامبين",
+      options: [
+        { value: "sales", label: "المبيعات" },
+        { value: "operations", label: "العمليات" },
+      ],
+    },
+    {
+      param: "campaignLabel",
+      label: "الكامبين",
+      options: (options?.campaignLabels ?? []).map((l) => ({ value: l, label: l })),
+    },
+    {
+      param: "sla",
+      label: "SLA",
+      options: [
+        { value: "breached", label: "خرق" },
+        { value: "near_breach", label: "قريبة" },
+        { value: "healthy", label: "سليمة" },
+      ],
+    },
+  ];
 }
 
 function FilterSelect({
@@ -260,11 +390,14 @@ function FilterSelect({
   value,
   onChange,
   options,
+  block = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
+  /** Full-width, 44px tall — the bottom-sheet variant. */
+  block?: boolean;
 }) {
   return (
     <select
@@ -272,6 +405,7 @@ function FilterSelect({
       onChange={(e) => onChange(e.target.value)}
       className={cn(
         "select-chip",
+        block && "min-h-11 w-full rounded-xl text-sm",
         value ? "border-primary/40 bg-primary/5 text-primary" : "border-border hover:border-primary/30",
       )}
       aria-label={label}

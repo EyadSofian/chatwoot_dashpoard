@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { average, median } from "@/lib/format";
 import { conversationWhere, type ReportFilters } from "./filters";
+import { getCampaignPerformanceBySource } from "./campaigns";
 
 function dayKey(date: Date, tz: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
@@ -147,28 +148,9 @@ export async function getOverview(f: ReportFilters, tz = "Africa/Cairo"): Promis
 }
 
 async function getCampaignPerformance(f: ReportFilters): Promise<OverviewResult["campaignPerformance"]> {
-  const sources: ("sales" | "operations")[] = f.campaignSource === "sales"
-    ? ["sales"]
-    : f.campaignSource === "operations"
-      ? ["operations"]
-      : ["sales", "operations"];
-  const out: OverviewResult["campaignPerformance"] = [];
-  for (const source of sources) {
-    const agg = await prisma.campaignJob.aggregate({
-      where: { sourceKey: source, type: "send", createdAtApp: { gte: f.from, lte: f.to } },
-      _sum: { sent: true, failed: true },
-    });
-    const replies = await prisma.campaignReply.count({
-      where: { campaignSource: source, replyAt: { gte: f.from, lte: f.to } },
-    });
-    const sent = agg._sum.sent ?? 0;
-    out.push({
-      source,
-      sent,
-      failed: agg._sum.failed ?? 0,
-      replies,
-      replyRate: sent > 0 ? replies / sent : 0,
-    });
-  }
-  return out;
+  // Source comes from CampaignJob.sourceKey. It used to be read off the
+  // `api_campaign_reply_team_id` custom attribute, which the uploader only writes
+  // when reply auto-assignment is configured — so both sources reported 0 replies
+  // whenever it was not. See reporting/campaigns.ts.
+  return getCampaignPerformanceBySource(f);
 }

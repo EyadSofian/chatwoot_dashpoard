@@ -59,11 +59,10 @@ export default function TeamsPage() {
         </div>
       ),
     },
-    { key: "memberCount", header: "عدد الموظفين", align: "end", render: (r) => num(r.memberCount) },
-    { key: "activeMembers", header: "موظفون نشطون", align: "end", render: (r) => num(r.activeMembers) },
+    // Trimmed to what you actually compare teams on. The rest lives in the sheet.
+    { key: "memberCount", header: "الأعضاء", align: "end", render: (r) => num(r.memberCount) },
     { key: "conversations", header: "محادثات", align: "end", render: (r) => num(r.conversations) },
     { key: "open", header: "مفتوحة", align: "end", render: (r) => num(r.open) },
-    { key: "replied", header: "تم الرد", align: "end", render: (r) => num(r.replied) },
     {
       key: "needsReply",
       header: "تحتاج رد",
@@ -75,9 +74,6 @@ export default function TeamsPage() {
       ),
     },
     { key: "avgResponseSeconds", header: "متوسط الرد", align: "end", render: (r) => dur(r.avgResponseSeconds) },
-    { key: "medianResponseSeconds", header: "الوسيط", align: "end", render: (r) => dur(r.medianResponseSeconds) },
-    { key: "maxResponseSeconds", header: "الأقصى", align: "end", render: (r) => dur(r.maxResponseSeconds) },
-    { key: "avgResolutionSeconds", header: "متوسط الإغلاق", align: "end", render: (r) => dur(r.avgResolutionSeconds) },
     {
       key: "slaBreaches",
       header: "خرق SLA",
@@ -85,13 +81,7 @@ export default function TeamsPage() {
       render: (r) =>
         r.slaBreaches ? <Badge tone="danger">{formatNumber(r.slaBreaches)}</Badge> : r.hasActivity ? num(0) : dash,
     },
-    {
-      key: "lastActivityAt",
-      header: "آخر نشاط",
-      align: "end",
-      render: (r) =>
-        r.lastActivityAt ? <span className="text-xs text-muted-foreground">{formatDateTime(r.lastActivityAt)}</span> : dash,
-    },
+    { key: "campaignReplies", header: "ردود الكامبين", align: "end", render: (r) => num(r.campaignReplies) },
   ];
 
   const s = data?.summary;
@@ -173,18 +163,103 @@ export default function TeamsPage() {
             <ErrorState message={error} />
           </div>
         ) : (
-          <DataTable
-            columns={columns}
-            rows={data?.rows ?? []}
-            getKey={(r) => r.teamCwId}
-            // The unattributed bucket is a footnote, not a team — nothing to open.
-            onRowClick={(r) => (r.teamCwId === NO_TEAM_ID ? undefined : setOpenTeam(r.teamCwId))}
-            emptyTitle={
-              activeOnly
-                ? "لا توجد تيمات نشطة في الفترة المختارة"
-                : "لا توجد تيمات — نفّذ مزامنة بيانات شات ووت من الإعدادات"
-            }
-          />
+          <>
+            {/* Desktop: a table you scan across teams. */}
+            <div className="hidden lg:block">
+              <DataTable
+                columns={columns}
+                rows={data?.rows ?? []}
+                getKey={(r) => r.teamCwId}
+                // The unattributed bucket is a footnote, not a team — nothing to open.
+                onRowClick={(r) => (r.teamCwId === NO_TEAM_ID ? undefined : setOpenTeam(r.teamCwId))}
+                emptyTitle={
+                  activeOnly
+                    ? "لا توجد تيمات نشطة في الفترة المختارة"
+                    : "لا توجد تيمات — نفّذ مزامنة بيانات شات ووت من الإعدادات"
+                }
+              />
+            </div>
+
+            {/* Mobile: tappable cards. A 13-column table dragged sideways is not a report. */}
+            <ul className="space-y-3 p-4 lg:hidden">
+              {(data?.rows ?? []).map((r) => {
+                const isBucket = r.teamCwId === NO_TEAM_ID;
+                return (
+                  <li key={r.teamCwId}>
+                    <button
+                      disabled={isBucket}
+                      onClick={() => setOpenTeam(r.teamCwId)}
+                      className={cn(
+                        "w-full rounded-card border border-border bg-surface p-4 text-start transition-shadow",
+                        isBucket ? "cursor-default opacity-70" : "cursor-pointer hover:shadow-card-hover",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div
+                            className={cn(
+                              "truncate font-bold",
+                              r.hasActivity ? "text-foreground" : "text-muted-foreground",
+                            )}
+                          >
+                            {r.name}
+                          </div>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                            {r.department && <DepartmentPill department={r.department} />}
+                            <span className="text-2xs text-muted-foreground">
+                              {formatNumber(r.memberCount)} عضو
+                            </span>
+                          </div>
+                        </div>
+                        {r.needsReply > 0 && <Badge tone="danger">{formatNumber(r.needsReply)} تحتاج رد</Badge>}
+                      </div>
+
+                      {!r.hasActivity ? (
+                        <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
+                          لا يوجد نشاط لهذا التيم خلال الفترة المختارة
+                        </p>
+                      ) : (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+                            <div className="text-base font-bold tnum">{formatNumber(r.conversations)}</div>
+                            <div className="text-2xs text-muted-foreground">محادثات</div>
+                          </div>
+                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+                            <div className="text-base font-bold tnum">{formatNumber(r.open)}</div>
+                            <div className="text-2xs text-muted-foreground">مفتوحة</div>
+                          </div>
+                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+                            <div className="text-base font-bold tnum text-primary">
+                              {r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—"}
+                            </div>
+                            <div className="text-2xs text-muted-foreground">متوسط الرد</div>
+                          </div>
+                          <div className="rounded-xl bg-surface-2 p-2.5 text-center">
+                            <div
+                              className={cn(
+                                "text-base font-bold tnum",
+                                r.slaBreaches > 0 ? "text-destructive-fg" : "text-foreground",
+                              )}
+                            >
+                              {formatNumber(r.slaBreaches)}
+                            </div>
+                            <div className="text-2xs text-muted-foreground">خرق SLA</div>
+                          </div>
+                        </div>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+              {!(data?.rows ?? []).length && (
+                <li className="p-6 text-center text-sm text-muted-foreground">
+                  {activeOnly
+                    ? "لا توجد تيمات نشطة في الفترة المختارة"
+                    : "لا توجد تيمات — نفّذ مزامنة بيانات شات ووت من الإعدادات"}
+                </li>
+              )}
+            </ul>
+          </>
         )}
       </Section>
 
