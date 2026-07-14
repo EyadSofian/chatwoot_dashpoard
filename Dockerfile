@@ -33,15 +33,32 @@ COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
+# Prisma CLI launcher.
+#
+# We deliberately do NOT `COPY /app/node_modules/.bin/prisma`: that path is a
+# symlink to ../prisma/build/index.js, and Docker dereferences single-file
+# COPYs. The copy lands in .bin/ detached from the *.wasm engines the bundled
+# CLI loads relative to its own location, so it dies with
+# `ENOENT: ... .bin/prisma_schema_build_bg.wasm` before the server ever boots.
+#
+# A shim keeps the CLI where its engines are, and putting .bin on PATH means a
+# bare `prisma` resolves too — so this works no matter which start command runs
+# (the CMD below, Railway's, or a custom one set in the dashboard).
+RUN mkdir -p node_modules/.bin \
+ && printf '#!/bin/sh\nexec node /app/node_modules/prisma/build/index.js "$@"\n' > node_modules/.bin/prisma \
+ && chmod +x node_modules/.bin/prisma
+ENV PATH="/app/node_modules/.bin:${PATH}"
+
+# Next's standalone package.json ships no scripts, so `npm run start` would fail
+# with "Missing script". Point it at the standalone server (there is no `next`
+# CLI in this image) so that start command works as well.
+RUN node -e "const fs=require('fs'),f='/app/package.json';const p=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,'utf8')):{};p.scripts={...(p.scripts||{}),start:'node server.js'};fs.writeFileSync(f,JSON.stringify(p,null,2))"
+
 USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-# Run the CLI via its real file, not the node_modules/.bin/prisma symlink:
-# `COPY --from=... /app/node_modules/.bin/prisma ...` dereferences that symlink
-# into a standalone copy sitting in .bin/, so the bundled CLI's __dirname-relative
-# lookup of its own *.wasm engines (which live beside build/index.js) resolves to
-# the wrong directory and fails with ENOENT. Invoking build/index.js directly
-# keeps it next to its wasm files, where it was copied intact above.
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+# Migrations must succeed before serving — a schema-less app would 500 on every
+# report. Failing here fails the healthcheck, which is what we want.
+CMD ["sh", "-c", "prisma migrate deploy && node server.js"]
