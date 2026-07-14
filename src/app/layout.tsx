@@ -14,6 +14,7 @@ export const metadata: Metadata = {
   description:
     "لوحة تحليلات تشغيلية لخدمة عملاء إنجوسوفت — تقارير الموظفين والأقسام والكامبينات ومستوى الخدمة.",
   robots: { index: false, follow: false },
+  icons: { icon: "/favicon.svg" },
 };
 
 export const viewport: Viewport = {
