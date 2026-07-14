@@ -7,7 +7,10 @@ export interface CampaignCorrelation {
   campaignStatus: string | null;
   campaignTemplate: string | null;
   campaignCreatedAt: Date | null;
+  campaignMarkedAt: Date | null;
   campaignActiveUntil: Date | null;
+  /** The `api_sent_<label>_<template>` keys the uploader stamps per send. */
+  sentMarkers: string[];
   reply: {
     mode: string | null;
     pending: boolean;
@@ -33,8 +36,8 @@ function str(value: unknown): string | null {
 export function correlateCampaign(attrs: Record<string, unknown> | null | undefined): CampaignCorrelation {
   const a = attrs || {};
   const label = str(a[CAMPAIGN_ATTRS.label]) ?? str(a[CAMPAIGN_ATTRS.lastLabel]);
-  const hasSentMarker = Object.keys(a).some((k) => k.startsWith(CAMPAIGN_SENT_PREFIX));
-  const isCampaign = Boolean(label) || hasSentMarker;
+  const sentMarkers = Object.keys(a).filter((k) => k.startsWith(CAMPAIGN_SENT_PREFIX));
+  const isCampaign = Boolean(label) || sentMarkers.length > 0;
 
   const replyAssigneeId = str(a[CAMPAIGN_ATTRS.replyAssigneeId]);
   const pendingRaw = a[CAMPAIGN_ATTRS.replyPending];
@@ -46,7 +49,9 @@ export function correlateCampaign(attrs: Record<string, unknown> | null | undefi
     campaignStatus: str(a[CAMPAIGN_ATTRS.status]),
     campaignTemplate: str(a[CAMPAIGN_ATTRS.lastTemplate]),
     campaignCreatedAt: toDate(a[CAMPAIGN_ATTRS.createdAt]),
+    campaignMarkedAt: toDate(a[CAMPAIGN_ATTRS.markedAt]),
     campaignActiveUntil: toDate(a[CAMPAIGN_ATTRS.activeUntil]),
+    sentMarkers,
     reply: {
       mode: str(a[CAMPAIGN_ATTRS.replyAssignMode]),
       pending,

@@ -35,6 +35,7 @@ export async function persistConversation(assembled: AssembledConversation): Pro
         senderId: m.senderId,
         senderName: m.senderName,
         isTemplate: m.isTemplate,
+        isAutomation: m.isAutomation,
         isBot: m.isBot,
         isHumanReply: m.isHumanReply,
         createdAtCw: m.createdAt,

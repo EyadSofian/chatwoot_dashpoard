@@ -81,7 +81,7 @@ export async function getConversationsPage(
 
 export interface TimelineItem {
   at: Date;
-  kind: string; // created | assigned | customer | agent | bot | template | note | resolved | reopened | campaign
+  kind: string; // created | assigned | customer | agent | bot | automation | template | note | resolved | reopened | campaign
   label: string;
   detail?: string | null;
 }
@@ -113,9 +113,29 @@ export async function getConversationDetail(chatwootId: number) {
   for (const m of messages) {
     if (!m.createdAtCw) continue;
     if (m.messageType === 2) continue; // activity
-    const kind = m.private ? "note" : m.isTemplate ? "template" : m.isBot ? "bot" : m.messageType === 0 ? "customer" : "agent";
+    const kind = m.private
+      ? "note"
+      : m.isTemplate
+        ? "template"
+        : m.isBot
+          ? "bot"
+          : m.isAutomation
+            ? "automation"
+            : m.messageType === 0
+              ? "customer"
+              : "agent";
     const label =
-      kind === "customer" ? "رسالة العميل" : kind === "bot" ? "رسالة فهد" : kind === "template" ? "قالب كامبين" : kind === "note" ? "ملاحظة داخلية" : "رد الموظف";
+      kind === "customer"
+        ? "رسالة العميل"
+        : kind === "bot"
+          ? "رسالة فهد"
+          : kind === "automation"
+            ? "رسالة آلية"
+            : kind === "template"
+              ? "قالب كامبين"
+              : kind === "note"
+                ? "ملاحظة داخلية"
+                : "رد الموظف";
     timeline.push({ at: m.createdAtCw, kind, label, detail: m.content?.slice(0, 280) ?? null });
   }
   timeline.sort((a, b) => a.at.getTime() - b.at.getTime());

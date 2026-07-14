@@ -132,6 +132,7 @@ CREATE TABLE "messages" (
     "senderId" INTEGER,
     "senderName" TEXT,
     "isTemplate" BOOLEAN NOT NULL DEFAULT false,
+    "isAutomation" BOOLEAN NOT NULL DEFAULT false,
     "isBot" BOOLEAN NOT NULL DEFAULT false,
     "isHumanReply" BOOLEAN NOT NULL DEFAULT false,
     "createdAtCw" TIMESTAMP(3),
@@ -143,7 +144,6 @@ CREATE TABLE "messages" (
 -- CreateTable
 CREATE TABLE "conversation_events" (
     "id" BIGSERIAL NOT NULL,
-    "conversationId" BIGINT NOT NULL,
     "conversationCwId" INTEGER NOT NULL,
     "type" TEXT NOT NULL,
     "dedupeKey" TEXT NOT NULL,
@@ -389,7 +389,7 @@ CREATE INDEX "messages_messageType_idx" ON "messages"("messageType");
 CREATE UNIQUE INDEX "conversation_events_dedupeKey_key" ON "conversation_events"("dedupeKey");
 
 -- CreateIndex
-CREATE INDEX "conversation_events_conversationId_occurredAt_idx" ON "conversation_events"("conversationId", "occurredAt");
+CREATE INDEX "conversation_events_conversationCwId_occurredAt_idx" ON "conversation_events"("conversationCwId", "occurredAt");
 
 -- CreateIndex
 CREATE INDEX "conversation_events_type_idx" ON "conversation_events"("type");
@@ -459,9 +459,6 @@ CREATE INDEX "sync_runs_type_startedAt_idx" ON "sync_runs"("type", "startedAt");
 
 -- AddForeignKey
 ALTER TABLE "messages" ADD CONSTRAINT "messages_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "conversation_events" ADD CONSTRAINT "conversation_events_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "assignment_intervals" ADD CONSTRAINT "assignment_intervals_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { ChatwootClient } from "@/lib/chatwoot/client";
 import { fetchAllMessages } from "@/lib/chatwoot/fetchers";
@@ -6,6 +5,7 @@ import { assembleConversation } from "@/lib/metrics/conversation";
 import { toDate } from "@/lib/time";
 import { buildAssembleContext } from "./context";
 import { persistConversation } from "./persist";
+import { webhookDedupeKey } from "./dedupe";
 
 interface WebhookBody {
   event?: string;
@@ -51,10 +51,7 @@ export async function processWebhook(
   const conversationCwId = extractConversationId(body);
   const messageCwId = event?.startsWith("message") && typeof body.id === "number" ? body.id : null;
   const occurredAt = toDate(body.created_at);
-  const dedupeKey = createHash("sha256")
-    .update(`${event ?? ""}\n`)
-    .update(rawBody)
-    .digest("hex");
+  const dedupeKey = webhookDedupeKey(event, rawBody);
 
   // Idempotent raw store: a duplicate delivery collides on dedupeKey.
   try {
