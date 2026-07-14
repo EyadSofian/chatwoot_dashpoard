@@ -52,7 +52,7 @@ export default function TeamsPage() {
             {r.name}
           </div>
           {!r.hasActivity ? (
-            <div className="text-2xs text-muted-foreground">لا يوجد نشاط لهذا التيم خلال الفترة المختارة</div>
+            <div className="text-2xs text-muted-foreground">لا نشاط في الفترة المختارة</div>
           ) : (
             r.department && <DepartmentPill department={r.department} />
           )}
@@ -133,7 +133,7 @@ export default function TeamsPage() {
 
       <Section
         title="أداء كل التيمات"
-        hint="كل تيمات شات ووت وكل أعضائها ظاهرين، والفترة المختارة تؤثر على الأداء فقط"
+        hint="الفترة بتحدد الأرقام، مش قائمة التيمات"
         action={
           <div className="flex items-center gap-3">
             <label
@@ -150,7 +150,7 @@ export default function TeamsPage() {
                 checked={activeOnly}
                 onChange={(e) => toggleActiveOnly(e.target.checked)}
               />
-              عرض التيمات النشطة فقط
+              النشطة فقط
             </label>
             <ExportButton dataset="teams" />
           </div>
@@ -175,7 +175,7 @@ export default function TeamsPage() {
                 emptyTitle={
                   activeOnly
                     ? "لا توجد تيمات نشطة في الفترة المختارة"
-                    : "لا توجد تيمات — نفّذ مزامنة بيانات شات ووت من الإعدادات"
+                    : "لا توجد تيمات — شغّل Sync من الإعدادات"
                 }
               />
             </div>
@@ -216,7 +216,7 @@ export default function TeamsPage() {
 
                       {!r.hasActivity ? (
                         <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-                          لا يوجد نشاط لهذا التيم خلال الفترة المختارة
+                          لا نشاط في الفترة المختارة
                         </p>
                       ) : (
                         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -255,7 +255,7 @@ export default function TeamsPage() {
                 <li className="p-6 text-center text-sm text-muted-foreground">
                   {activeOnly
                     ? "لا توجد تيمات نشطة في الفترة المختارة"
-                    : "لا توجد تيمات — نفّذ مزامنة بيانات شات ووت من الإعدادات"}
+                    : "لا توجد تيمات — شغّل Sync من الإعدادات"}
                 </li>
               )}
             </ul>

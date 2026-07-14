@@ -9,15 +9,15 @@ import { cn } from "@/components/ui";
 
 /** One line of context under each page title — tells you what you're looking at. */
 const SUBTITLE: Record<string, string> = {
-  overview: "نظرة سريعة على الأداء والمحادثات ومستوى الخدمة",
-  agents: "أداء كل موظف: المحادثات، زمن الرد من لحظة الإسناد، والحالات",
-  departments: "مقارنة المبيعات والعمليات والشكاوى",
-  conversations: "كل المحادثات مع الخط الزمني الكامل لكل واحدة",
-  campaigns: "كامبينات المبيعات والعمليات — ومين عمل كل كامبين",
-  sla: "الخروقات والمحادثات القريبة من خرق مستوى الخدمة",
-  fahd: "تسليمات بوت فهد للموظفين ونتيجة كل تسليم",
-  exports: "تصدير أي تقرير كملف CSV بنفس الفلاتر المطبقة",
-  settings: "الويبهوك، جلب البيانات، اختبار الاتصال، وإعدادات SLA",
+  overview: "الأداء العام",
+  agents: "أداء الموظفين",
+  departments: "مقارنة الأقسام",
+  conversations: "كل المحادثات",
+  campaigns: "الإرسال والردود",
+  sla: "الخروقات والمتأخرات",
+  fahd: "تسليمات البوت للموظفين",
+  exports: "تصدير CSV بنفس الفلاتر",
+  settings: "الربط والمزامنة و SLA",
 };
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {

@@ -7,6 +7,7 @@ import { useApiData } from "@/lib/client/api";
 import type { FilterOptions } from "@/lib/reporting/filterOptions";
 import { DEPARTMENT_LABELS_AR, STATUS_LABELS_AR, type Department } from "@/lib/constants";
 import { RANGE_PRESETS, DEFAULT_RANGE, resolveRange, parseDateInput, toDateInput, type RangeKey } from "@/lib/dateRange";
+import { MultiSelect, type Option } from "@/components/MultiSelect";
 import { cn } from "@/components/ui";
 
 const FILTER_KEYS = [
@@ -27,13 +28,14 @@ export function FilterBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: options } = useApiData<FilterOptions>("/api/filters");
+  const [sheet, setSheet] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
   const setParams = useCallback(
     (updates: Record<string, string | undefined>) => {
       const next = new URLSearchParams(searchParams.toString());
       for (const [key, value] of Object.entries(updates)) {
-        if (value === undefined || value === "" || value === "all") next.delete(key);
+        if (value === undefined || value === "") next.delete(key);
         else next.set(key, value);
       }
       next.delete("page");
@@ -43,38 +45,85 @@ export function FilterBar() {
   );
 
   const get = (key: string) => searchParams.get(key) ?? "";
+  /** Multi-select values live in the URL comma-separated. */
+  const getList = (key: string) => (get(key) ? get(key).split(",").filter(Boolean) : []);
+  const setList = (key: string, values: string[]) => setParams({ [key]: values.length ? values.join(",") : undefined });
 
-  /** Presets write both the key (for the active chip) and the resolved window. */
   const applyPreset = (key: RangeKey) => {
     const { from, to } = resolveRange(key);
     setParams({ range: key, from: from.toISOString(), to: to.toISOString() });
   };
 
-  /** Editing either date field switches the selection to a custom window. */
   const applyCustomDate = (side: "from" | "to", value: string) => {
-    if (!value) {
-      setParams({ [side]: undefined });
-      return;
-    }
+    if (!value) return setParams({ [side]: undefined });
     const parsed = parseDateInput(value, { endOfDay: side === "to" });
-    if (!parsed) return;
-    setParams({ range: "custom", [side]: parsed.toISOString() });
+    if (parsed) setParams({ range: "custom", [side]: parsed.toISOString() });
   };
 
   const activeRange = get("range") || DEFAULT_RANGE;
-  const activeCount = FILTER_KEYS.filter((k) => searchParams.get(k)).length;
+  const activeCount = FILTER_KEYS.reduce((n, k) => n + (searchParams.get(k) ? getList(k).length || 1 : 0), 0);
 
-  // Fall back to the default window so the pickers are never blank on first load.
   const fallback = resolveRange(DEFAULT_RANGE);
   const fromValue = toDateInput(get("from") || fallback.from);
   const toValue = toDateInput(get("to") || fallback.to);
 
+  const opt = (o: FilterOptions | null) => ({
+    department: (o?.departments ?? []).map((d) => ({ value: d, label: DEPARTMENT_LABELS_AR[d as Department] ?? d })),
+    teamId: (o?.teams ?? []).map((t) => ({ value: String(t.id), label: t.name })),
+    agentId: (o?.agents ?? []).map((a) => ({ value: String(a.id), label: a.name })),
+    inboxId: (o?.inboxes ?? []).map((i) => ({ value: String(i.id), label: i.name })),
+    status: ["open", "pending", "resolved", "snoozed"].map((s) => ({ value: s, label: STATUS_LABELS_AR[s] ?? s })),
+    campaignSource: [
+      { value: "sales", label: "المبيعات" },
+      { value: "operations", label: "العمليات" },
+    ],
+    campaignLabel: (o?.campaignLabels ?? []).map((l) => ({ value: l, label: l })),
+    sla: [
+      { value: "breached", label: "خرق" },
+      { value: "near_breach", label: "قريب" },
+      { value: "healthy", label: "سليم" },
+    ],
+  });
+
+  const O = opt(options ?? null);
+
+  const FIELDS: { key: string; label: string; options: Option[] }[] = [
+    { key: "department", label: "القسم", options: O.department },
+    { key: "teamId", label: "التيم", options: O.teamId },
+    { key: "agentId", label: "الموظف", options: O.agentId },
+    { key: "inboxId", label: "Inbox", options: O.inboxId },
+    { key: "status", label: "الحالة", options: O.status },
+    { key: "campaignSource", label: "مصدر الكامبين", options: O.campaignSource },
+    { key: "campaignLabel", label: "الكامبين", options: O.campaignLabel },
+    { key: "sla", label: "SLA", options: O.sla },
+  ];
+
+  const needsReplyToggle = (block = false) => (
+    <label
+      className={cn(
+        "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+        block && "min-h-11 w-full rounded-xl text-sm",
+        get("needsReply") === "true"
+          ? "border-destructive/30 bg-destructive/5 text-destructive-fg"
+          : "border-border bg-surface text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <input
+        type="checkbox"
+        className="h-3.5 w-3.5 cursor-pointer accent-current"
+        checked={get("needsReply") === "true"}
+        onChange={(e) => setParams({ needsReply: e.target.checked ? "true" : undefined })}
+      />
+      يحتاج رد
+    </label>
+  );
+
   return (
-    <div className="sticky top-[73px] z-20 border-b border-border bg-surface/85 px-5 py-3 backdrop-blur-md">
+    <div className="sticky top-[73px] z-20 border-b border-border bg-surface/85 px-4 py-3 backdrop-blur-md sm:px-5">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-3">
         {/* Period */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-xs font-bold text-muted-foreground">الفترة</span>
+          <span className="hidden text-xs font-bold text-muted-foreground sm:inline">الفترة</span>
 
           <div className="flex flex-wrap gap-1 rounded-full border border-border bg-background p-1">
             {RANGE_PRESETS.map((p) => (
@@ -98,32 +147,30 @@ export function FilterBar() {
             )}
           </div>
 
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="font-medium">من تاريخ</span>
+          <div className="hidden items-center gap-2 xl:flex">
             <input
               type="date"
               value={fromValue}
               max={toValue || undefined}
               onChange={(e) => applyCustomDate("from", e.target.value)}
+              aria-label="من تاريخ"
               className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
             />
-          </label>
-
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="font-medium">إلى تاريخ</span>
+            <span className="text-xs text-muted-foreground">—</span>
             <input
               type="date"
               value={toValue}
               min={fromValue || undefined}
               onChange={(e) => applyCustomDate("to", e.target.value)}
+              aria-label="إلى تاريخ"
               className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
             />
-          </label>
+          </div>
         </div>
 
         {/* Search + filters */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+          <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
             <Search
               className="pointer-events-none absolute inset-y-0 my-auto h-4 w-4 text-muted-foreground"
               style={{ insetInlineStart: 12 }}
@@ -131,7 +178,7 @@ export function FilterBar() {
             />
             <input
               defaultValue={get("search")}
-              placeholder="ابحث بالاسم أو الهاتف أو رقم المحادثة"
+              placeholder="اسم، رقم، أو رقم محادثة"
               onKeyDown={(e) => {
                 if (e.key === "Enter") setParams({ search: (e.target as HTMLInputElement).value });
               }}
@@ -141,16 +188,33 @@ export function FilterBar() {
             />
           </div>
 
+          {/* Desktop toggles the inline row; mobile opens the sheet. */}
           <button
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
             className={cn(
-              "btn-ghost rounded-full px-3 py-2 text-xs",
+              "btn-ghost hidden rounded-full px-3 py-2 text-xs lg:inline-flex",
               (expanded || activeCount > 0) && "border-primary/30 bg-primary/5 text-primary",
             )}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
             فلاتر
+            {activeCount > 0 && (
+              <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-bold text-on-primary tnum">
+                {activeCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setSheet(true)}
+            className={cn(
+              "btn-ghost rounded-full px-3 py-2 text-xs lg:hidden",
+              activeCount > 0 && "border-primary/30 bg-primary/5 text-primary",
+            )}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            فلترة
             {activeCount > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-bold text-on-primary tnum">
                 {activeCount}
@@ -168,109 +232,38 @@ export function FilterBar() {
           )}
         </div>
 
-        {/*
-          Desktop: the filters unfold inline. Mobile: they live in a bottom sheet,
-          because eight selects wrapped across a 375px screen is not a filter bar.
-        */}
+        {/* Desktop filter row */}
         {(expanded || activeCount > 0) && (
           <div className="hidden flex-wrap items-center gap-2 lg:flex">
-            <FilterSelect
-              label="القسم"
-              value={get("department")}
-              onChange={(v) => setParams({ department: v })}
-              options={(options?.departments ?? []).map((d) => ({
-                value: d,
-                label: DEPARTMENT_LABELS_AR[d as Department] ?? d,
-              }))}
-            />
-            <FilterSelect
-              label="الفريق"
-              value={get("teamId")}
-              onChange={(v) => setParams({ teamId: v })}
-              options={(options?.teams ?? []).map((t) => ({ value: String(t.id), label: t.name }))}
-            />
-            <FilterSelect
-              label="الموظف"
-              value={get("agentId")}
-              onChange={(v) => setParams({ agentId: v })}
-              options={(options?.agents ?? []).map((a) => ({ value: String(a.id), label: a.name }))}
-            />
-            <FilterSelect
-              label="القناة"
-              value={get("inboxId")}
-              onChange={(v) => setParams({ inboxId: v })}
-              options={(options?.inboxes ?? []).map((i) => ({ value: String(i.id), label: i.name }))}
-            />
-            <FilterSelect
-              label="الحالة"
-              value={get("status")}
-              onChange={(v) => setParams({ status: v })}
-              options={["open", "pending", "resolved", "snoozed"].map((s) => ({
-                value: s,
-                label: STATUS_LABELS_AR[s] ?? s,
-              }))}
-            />
-            <FilterSelect
-              label="مصدر الكامبين"
-              value={get("campaignSource")}
-              onChange={(v) => setParams({ campaignSource: v })}
-              options={[
-                { value: "sales", label: "المبيعات" },
-                { value: "operations", label: "العمليات" },
-              ]}
-            />
-            <FilterSelect
-              label="الكامبين"
-              value={get("campaignLabel")}
-              onChange={(v) => setParams({ campaignLabel: v })}
-              options={(options?.campaignLabels ?? []).map((l) => ({ value: l, label: l }))}
-            />
-            <FilterSelect
-              label="مستوى الخدمة"
-              value={get("sla")}
-              onChange={(v) => setParams({ sla: v })}
-              options={[
-                { value: "breached", label: "خرق" },
-                { value: "near_breach", label: "قريبة" },
-                { value: "healthy", label: "سليمة" },
-              ]}
-            />
-
-            <label
-              className={cn(
-                "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                get("needsReply") === "true"
-                  ? "border-destructive/30 bg-destructive/5 text-destructive-fg"
-                  : "border-border bg-surface text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 cursor-pointer accent-current"
-                checked={get("needsReply") === "true"}
-                onChange={(e) => setParams({ needsReply: e.target.checked ? "true" : undefined })}
+            {FIELDS.map((f) => (
+              <MultiSelect
+                key={f.key}
+                label={f.label}
+                values={getList(f.key)}
+                options={f.options}
+                onChange={(v) => setList(f.key, v)}
               />
-              يحتاج رد فقط
-            </label>
+            ))}
+            {needsReplyToggle()}
           </div>
         )}
       </div>
 
       {/* Mobile bottom sheet */}
-      {expanded && (
+      {sheet && (
         <div className="lg:hidden">
-          <div className="fixed inset-0 z-40 bg-navy/40 backdrop-blur-sm" onClick={() => setExpanded(false)} aria-hidden />
+          <div className="fixed inset-0 z-40 bg-navy/40 backdrop-blur-sm" onClick={() => setSheet(false)} aria-hidden />
           <div
             role="dialog"
             aria-modal="true"
             aria-label="فلترة"
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[80dvh] overflow-y-auto rounded-t-3xl border-t border-border bg-surface p-5 pb-8 shadow-pop"
+            className="fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl border-t border-border bg-surface p-5 pb-8 shadow-pop"
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" aria-hidden />
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold">فلترة</h2>
               <button
-                onClick={() => setExpanded(false)}
+                onClick={() => setSheet(false)}
                 className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground"
                 aria-label="إغلاق"
               >
@@ -278,47 +271,55 @@ export function FilterBar() {
               </button>
             </div>
 
+            {/* Custom dates live here on mobile — no room for them in the bar. */}
+            <div className="mb-3 grid grid-cols-2 gap-2.5">
+              <label className="text-2xs font-semibold text-muted-foreground">
+                من
+                <input
+                  type="date"
+                  value={fromValue}
+                  max={toValue || undefined}
+                  onChange={(e) => applyCustomDate("from", e.target.value)}
+                  className="mt-1 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none"
+                />
+              </label>
+              <label className="text-2xs font-semibold text-muted-foreground">
+                إلى
+                <input
+                  type="date"
+                  value={toValue}
+                  min={fromValue || undefined}
+                  onChange={(e) => applyCustomDate("to", e.target.value)}
+                  className="mt-1 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground focus:border-primary focus:outline-none"
+                />
+              </label>
+            </div>
+
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              {SHEET_FILTERS(options).map((f) => (
-                <FilterSelect
-                  key={f.label}
+              {FIELDS.map((f) => (
+                <MultiSelect
+                  key={f.key}
                   label={f.label}
-                  value={get(f.param)}
-                  onChange={(v) => setParams({ [f.param]: v })}
+                  values={getList(f.key)}
                   options={f.options}
+                  onChange={(v) => setList(f.key, v)}
                   block
                 />
               ))}
-
-              <label
-                className={cn(
-                  "inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors",
-                  get("needsReply") === "true"
-                    ? "border-destructive/30 bg-destructive/5 text-destructive-fg"
-                    : "border-border bg-surface text-muted-foreground",
-                )}
-              >
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 cursor-pointer accent-current"
-                  checked={get("needsReply") === "true"}
-                  onChange={(e) => setParams({ needsReply: e.target.checked ? "true" : undefined })}
-                />
-                يحتاج رد فقط
-              </label>
+              {needsReplyToggle(true)}
             </div>
 
             <div className="mt-5 flex gap-2">
               <button
                 onClick={() => {
                   router.replace(pathname, { scroll: false });
-                  setExpanded(false);
+                  setSheet(false);
                 }}
                 className="btn-ghost min-h-11 flex-1"
               >
                 مسح الكل
               </button>
-              <button onClick={() => setExpanded(false)} className="btn-primary min-h-11 flex-1">
+              <button onClick={() => setSheet(false)} className="btn-primary min-h-11 flex-1">
                 تطبيق
               </button>
             </div>
@@ -326,96 +327,5 @@ export function FilterBar() {
         </div>
       )}
     </div>
-  );
-}
-
-/** The same filter set the desktop row shows, as data — so the two cannot drift. */
-function SHEET_FILTERS(options: FilterOptions | null) {
-  return [
-    {
-      param: "department",
-      label: "القسم",
-      options: (options?.departments ?? []).map((d) => ({
-        value: d,
-        label: DEPARTMENT_LABELS_AR[d as Department] ?? d,
-      })),
-    },
-    {
-      param: "teamId",
-      label: "التيم",
-      options: (options?.teams ?? []).map((t) => ({ value: String(t.id), label: t.name })),
-    },
-    {
-      param: "agentId",
-      label: "الموظف",
-      options: (options?.agents ?? []).map((a) => ({ value: String(a.id), label: a.name })),
-    },
-    {
-      param: "inboxId",
-      label: "الانبوكس",
-      options: (options?.inboxes ?? []).map((i) => ({ value: String(i.id), label: i.name })),
-    },
-    {
-      param: "status",
-      label: "حالة المحادثة",
-      options: ["open", "pending", "resolved", "snoozed"].map((s) => ({ value: s, label: STATUS_LABELS_AR[s] ?? s })),
-    },
-    {
-      param: "campaignSource",
-      label: "مصدر الكامبين",
-      options: [
-        { value: "sales", label: "المبيعات" },
-        { value: "operations", label: "العمليات" },
-      ],
-    },
-    {
-      param: "campaignLabel",
-      label: "الكامبين",
-      options: (options?.campaignLabels ?? []).map((l) => ({ value: l, label: l })),
-    },
-    {
-      param: "sla",
-      label: "SLA",
-      options: [
-        { value: "breached", label: "خرق" },
-        { value: "near_breach", label: "قريبة" },
-        { value: "healthy", label: "سليمة" },
-      ],
-    },
-  ];
-}
-
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-  block = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  /** Full-width, 44px tall — the bottom-sheet variant. */
-  block?: boolean;
-}) {
-  return (
-    <select
-      value={value || "all"}
-      onChange={(e) => onChange(e.target.value)}
-      className={cn(
-        "select-chip",
-        block && "min-h-11 w-full rounded-xl text-sm",
-        value ? "border-primary/40 bg-primary/5 text-primary" : "border-border hover:border-primary/30",
-      )}
-      aria-label={label}
-    >
-      <option value="all">{label}: الكل</option>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
   );
 }

@@ -6,7 +6,7 @@ import {
   type AgentRecord,
 } from "@/lib/reporting/agents";
 import { resolveRange, parseDateInput, toDateInput } from "@/lib/dateRange";
-import { parseFilters, filtersToQuery } from "@/lib/reporting/filters";
+import { parseFilters, filtersToQuery, conversationWhere } from "@/lib/reporting/filters";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    The roster: three agents on the Chatwoot account. Only two of them touched a
@@ -270,6 +270,53 @@ describe("custom range reaches the report filters", () => {
     expect(f.activeOnly).toBeUndefined();
   });
 
+  it("parses a multi-select list out of one comma-separated param", () => {
+    const f = parseFilters(
+      new URLSearchParams({ department: "sales,operations", teamId: "3,4", sla: "breached,near_breach" }),
+    );
+
+    expect(f.department).toEqual(["sales", "operations"]);
+    expect(f.teamId).toEqual([3, 4]);
+    expect(f.sla).toEqual(["breached", "near_breach"]);
+  });
+
+  it("drops blanks, 'all' and duplicates from a selection", () => {
+    const f = parseFilters(new URLSearchParams({ department: "sales,,all,sales,operations", agentId: "10,abc,10" }));
+
+    expect(f.department).toEqual(["sales", "operations"]);
+    expect(f.agentId).toEqual([10]); // 'abc' is not an id
+  });
+
+  it("treats an empty selection as no filter at all", () => {
+    const f = parseFilters(new URLSearchParams({ department: "", teamId: "all" }));
+    expect(f.department).toBeUndefined();
+    expect(f.teamId).toBeUndefined();
+  });
+
+  it("builds an `in` clause for every selected list", () => {
+    const where = conversationWhere({
+      from: new Date("2026-02-01"),
+      to: new Date("2026-02-28"),
+      department: ["sales", "operations"],
+      teamId: [3, 4],
+      status: ["open", "pending"],
+      sla: ["breached"],
+    });
+
+    expect(where.department).toEqual({ in: ["sales", "operations"] });
+    expect(where.teamCwId).toEqual({ in: [3, 4] });
+    expect(where.status).toEqual({ in: ["open", "pending"] });
+    expect(where.slaFirstResponseState).toEqual({ in: ["breached"] });
+  });
+
+  it("round-trips a multi-selection through the export link", () => {
+    const f = parseFilters(new URLSearchParams({ department: "sales,operations", teamId: "3,4" }));
+    const qs = new URLSearchParams(filtersToQuery(f));
+
+    expect(qs.get("department")).toBe("sales,operations");
+    expect(qs.get("teamId")).toBe("3,4");
+  });
+
   it("carries the range and activeOnly through to the CSV export link", () => {
     const f = parseFilters(
       new URLSearchParams({ from: "2026-02-01T00:00:00.000Z", to: "2026-02-28T00:00:00.000Z", activeOnly: "true" }),
@@ -344,10 +391,17 @@ describe("getAgentLeaderboard query", () => {
     expect(summary.activeAgents).toBe(1);
   });
 
-  it("narrows the roster to one agent when drilling into their page", async () => {
-    await getAgentLeaderboard({ from: new Date("2026-02-01"), to: new Date("2026-02-28"), agentId: 20 });
+  it("narrows the roster to the selected agents (multi-select)", async () => {
+    await getAgentLeaderboard({ from: new Date("2026-02-01"), to: new Date("2026-02-28"), agentId: [20] });
 
-    expect(db.agentWhere).toEqual({ id: 20 });
-    expect(db.intervalWhere).toMatchObject({ assigneeCwId: 20 });
+    expect(db.agentWhere).toEqual({ id: { in: [20] } });
+    expect(db.intervalWhere).toMatchObject({ assigneeCwId: { in: [20] } });
+  });
+
+  it("accepts several agents at once", async () => {
+    await getAgentLeaderboard({ from: new Date("2026-02-01"), to: new Date("2026-02-28"), agentId: [10, 20] });
+
+    expect(db.agentWhere).toEqual({ id: { in: [10, 20] } });
+    expect(db.intervalWhere).toMatchObject({ assigneeCwId: { in: [10, 20] } });
   });
 });

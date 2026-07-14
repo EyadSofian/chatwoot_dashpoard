@@ -177,7 +177,8 @@ export async function getAgentLeaderboard(f: ReportFilters): Promise<AgentLeader
   const where = conversationWhere(f);
 
   // When drilling into one agent, the roster is just that agent.
-  const agentWhere = f.agentId !== undefined ? { id: f.agentId } : {};
+  // Selecting agents narrows the roster; selecting none shows all of them.
+  const agentWhere = f.agentId?.length ? { id: { in: f.agentId } } : {};
 
   const [agents, conversations, intervals] = await Promise.all([
     prisma.agent.findMany({
@@ -201,7 +202,7 @@ export async function getAgentLeaderboard(f: ReportFilters): Promise<AgentLeader
       where: {
         startedAt: { gte: f.from, lte: f.to },
         responded: true,
-        ...(f.agentId !== undefined ? { assigneeCwId: f.agentId } : {}),
+        ...(f.agentId?.length ? { assigneeCwId: { in: f.agentId } } : {}),
       },
       select: { assigneeCwId: true, responseSeconds: true, responded: true },
       take: 100000,
@@ -220,7 +221,7 @@ export async function getAgentDetail(agentId: number, f: ReportFilters) {
   const where = conversationWhere(f);
   const [agent, board, conversations] = await Promise.all([
     prisma.agent.findUnique({ where: { id: agentId } }),
-    getAgentLeaderboard({ ...f, agentId, activeOnly: false }),
+    getAgentLeaderboard({ ...f, agentId: [agentId], activeOnly: false }),
     prisma.conversation.findMany({
       where: { ...where, assigneeCwId: agentId },
       orderBy: { lastMessageAt: "desc" },

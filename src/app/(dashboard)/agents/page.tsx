@@ -43,7 +43,7 @@ export default function AgentsPage() {
             <div className={cn("truncate font-semibold", r.hasActivity ? "text-foreground" : "text-muted-foreground")}>
               {r.name}
             </div>
-            {!r.hasActivity && <div className="text-2xs text-muted-foreground">لا توجد محادثات في الفترة</div>}
+            {!r.hasActivity && <div className="text-2xs text-muted-foreground">لا محادثات في الفترة</div>}
           </div>
         </div>
       ),
@@ -106,7 +106,7 @@ export default function AgentsPage() {
             value={s?.avgResponseSeconds != null ? formatDurationShort(s.avgResponseSeconds) : "—"}
             icon={<Timer className="h-[18px] w-[18px]" />}
             tone="violet"
-            sub="من لحظة الإسناد لأول رد بشري"
+            sub="من الإسناد لأول رد"
           />
           <StatTile
             label="إجمالي خروقات SLA"
@@ -119,7 +119,7 @@ export default function AgentsPage() {
 
       <Section
         title="أداء كل الموظفين"
-        hint="كل موظفي شات ووت ظاهرين هنا، والفترة المختارة تؤثر على الأرقام فقط وليس ظهور الموظفين"
+        hint="الفترة بتحدد الأرقام، مش قائمة الموظفين"
         action={
           <div className="flex items-center gap-3">
             <label
@@ -136,7 +136,7 @@ export default function AgentsPage() {
                 checked={activeOnly}
                 onChange={(e) => toggleActiveOnly(e.target.checked)}
               />
-              عرض الموظفين النشطين فقط
+              النشطين فقط
             </label>
             <ExportButton dataset="agents" />
           </div>
@@ -157,7 +157,7 @@ export default function AgentsPage() {
             emptyTitle={
               activeOnly
                 ? "لا يوجد موظفون نشطون في الفترة المختارة"
-                : "لا يوجد موظفون — نفّذ Backfill من الإعدادات لمزامنتهم من Chatwoot"
+                : "لا يوجد موظفون — شغّل Sync من الإعدادات"
             }
           />
         )}

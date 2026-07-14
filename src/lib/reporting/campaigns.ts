@@ -82,7 +82,7 @@ export interface CampaignsResult {
 }
 
 export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
-  const sourceFilter = f.campaignSource ? { sourceKey: f.campaignSource } : {};
+  const sourceFilter = f.campaignSource?.length ? { sourceKey: { in: f.campaignSource } } : {};
 
   // Cohort: campaigns SENT in the window. Their replies are then counted however
   // long they took (up to the window's end) — a campaign sent on the 30th whose
@@ -92,7 +92,7 @@ export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
       type: "send",
       createdAtApp: { gte: f.from, lte: f.to },
       ...sourceFilter,
-      ...(f.campaignLabel ? { labelName: f.campaignLabel } : {}),
+      ...(f.campaignLabel?.length ? { labelName: { in: f.campaignLabel } } : {}),
     },
     orderBy: { createdAtApp: "desc" },
     take: 1000,
@@ -232,12 +232,8 @@ export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
 
 /** Per-source rollup for the overview — source read from the job, never a marker. */
 export async function getCampaignPerformanceBySource(f: ReportFilters) {
-  const sources: ("sales" | "operations")[] =
-    f.campaignSource === "sales"
-      ? ["sales"]
-      : f.campaignSource === "operations"
-        ? ["operations"]
-        : ["sales", "operations"];
+  const selected = f.campaignSource?.length ? f.campaignSource : ["sales", "operations"];
+  const sources = (["sales", "operations"] as const).filter((s) => selected.includes(s));
 
   const out: { source: string; sent: number; failed: number; replies: number; replyRate: number }[] = [];
 

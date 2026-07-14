@@ -44,8 +44,8 @@ export default function OverviewPage() {
   if (!data) {
     return (
       <EmptyState
-        title="لا توجد بيانات بعد"
-        hint="ابدأ بعمل Backfill من صفحة الإعدادات لجلب المحادثات، أو اربط الويبهوك عشان البيانات تدخل مباشرة."
+        title="لا توجد بيانات"
+        hint="ابدأ من الإعدادات: Backfill أو Webhook."
       />
     );
   }
@@ -81,7 +81,7 @@ export default function OverviewPage() {
           value={formatNumber(k.needsReply)}
           icon={<Reply className="h-[18px] w-[18px]" />}
           tone="warning"
-          sub="العميل اتكلم آخر حاجة ومحدش رد"
+          sub="آخر رسالة من العميل"
         />
         <StatTile
           label="خرق مستوى الخدمة"
@@ -123,19 +123,19 @@ export default function OverviewPage() {
       {/* ── Charts ── */}
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardTitle hint="المحادثات الجديدة مقابل المحلولة كل يوم">اتجاه المحادثات</CardTitle>
+          <CardTitle hint="جديدة مقابل محلولة">اتجاه المحادثات</CardTitle>
           {data.dailyTrend.length ? <TrendChart data={data.dailyTrend} /> : <EmptyState title="لا توجد بيانات في الفترة دي" />}
         </Card>
 
         <Card>
-          <CardTitle hint="متوسط الرد من لحظة الإسناد">زمن الرد حسب القسم</CardTitle>
+          <CardTitle hint="من الإسناد لأول رد">زمن الرد حسب القسم</CardTitle>
           {deptChart.length ? <DeptResponseBar data={deptChart} /> : <EmptyState title="لا توجد بيانات" />}
         </Card>
       </div>
 
       {/* ── Agent load + late conversations ── */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <Section title="حمل الموظفين" hint="مين شايل كام محادثة دلوقتي">
+        <Section title="حمل الموظفين" hint="المفتوح حاليًا">
           <div className="overflow-x-auto">
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>
@@ -188,7 +188,7 @@ export default function OverviewPage() {
 
         <Section
           title="محادثات متأخرة"
-          hint="أطول محادثات مستنية رد"
+          hint="الأطول انتظارًا"
           action={<ExportButton dataset="conversations" />}
         >
           <div className="overflow-x-auto">
@@ -228,7 +228,7 @@ export default function OverviewPage() {
                 {!data.lateConversations.length && (
                   <tr>
                     <td colSpan={4}>
-                      <EmptyState title="مفيش محادثات متأخرة" hint="كله تحت السيطرة 👌" />
+                      <EmptyState title="لا توجد محادثات متأخرة"  />
                     </td>
                   </tr>
                 )}
@@ -240,7 +240,7 @@ export default function OverviewPage() {
 
       {/* ── Campaign performance ── */}
       <Card>
-        <CardTitle hint="من تطبيقَي رفع الكامبينات — المبيعات والعمليات">أداء الكامبينات</CardTitle>
+        <CardTitle hint="Sales و Operations">أداء الكامبينات</CardTitle>
         <div className="grid gap-4 sm:grid-cols-2">
           {data.campaignPerformance.map((c) => (
             <div key={c.source} className="rounded-card border border-border p-4">

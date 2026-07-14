@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AlertTriangle, CheckCircle2, Megaphone, MessageSquareReply, Timer } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import type { CampaignsResult, CampaignRow } from "@/lib/reporting/campaigns";
-import { Section, LoadingBlock, ErrorState, Badge, cn, StatTile, SkeletonCards } from "@/components/ui";
+import { Section, LoadingBlock, ErrorState, Badge, cn, StatTile, SkeletonCards, Meter } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { CampaignDrawer } from "@/components/CampaignDrawer";
@@ -29,12 +29,12 @@ function StateNote({ row }: { row: CampaignRow }) {
   if (row.dataState === "not_reconciled") {
     return (
       <span className="text-2xs font-semibold text-warning-fg">
-        تمت مزامنة الإرسال لكن لم تتم مطابقة رسائل شات ووت بعد
+        الإرسال متزامن، لسه مش متطابق مع رسائل Chatwoot
       </span>
     );
   }
   if (row.dataState === "no_replies") {
-    return <span className="text-2xs text-muted-foreground">لا توجد ردود من العملاء في هذه الحملة</span>;
+    return <span className="text-2xs text-muted-foreground">مفيش ردود من العملاء</span>;
   }
   return null;
 }
@@ -106,7 +106,12 @@ export default function CampaignsPage() {
       header: "نسبة رد العملاء",
       align: "end",
       // 0.0%, never "—" — a zero rate is a real answer, not missing data.
-      render: (r) => <span className="tnum font-semibold text-primary">{formatPercent(r.replyRate, 1)}</span>,
+      render: (r) => (
+        <div className="min-w-[86px]">
+          <span className="tnum font-semibold text-primary">{formatPercent(r.replyRate, 1)}</span>
+          <Meter value={r.replyRate} className="mt-1" />
+        </div>
+      ),
     },
     { key: "teamReplied", header: "رد عليهم الفريق", align: "end", render: (r) => num(r.teamReplied) },
     {
@@ -140,7 +145,7 @@ export default function CampaignsPage() {
             value={formatNumber(t?.customerReplies ?? 0)}
             icon={<MessageSquareReply className="h-[18px] w-[18px]" />}
             tone="success"
-            sub="من المستلمين الذين أُرسل لهم الكامبين"
+            sub="من المستلمين"
           />
           <StatTile
             label="نسبة رد العملاء"
@@ -159,7 +164,7 @@ export default function CampaignsPage() {
             value={formatNumber(t?.repliesInPeriod ?? 0)}
             icon={<MessageSquareReply className="h-[18px] w-[18px]" />}
             tone="neutral"
-            sub="حجم يومي — مستقل عن أداء كامبينات الفترة"
+            sub="بغض النظر عن تاريخ الإرسال"
           />
         </div>
       )}
@@ -168,7 +173,7 @@ export default function CampaignsPage() {
         <div className="flex items-center gap-3 rounded-card border border-warning/30 bg-warning/5 px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning-fg" aria-hidden />
           <p className="text-sm font-semibold text-warning-fg">
-            لم تتم مزامنة تطبيق الكامبين — نفّذ «مزامنة الكامبينات» من الإعدادات.
+            تطبيق الكامبين مش متزامن — شغّل Campaign Sync من الإعدادات.
           </p>
         </div>
       )}
@@ -177,14 +182,14 @@ export default function CampaignsPage() {
         <div className="flex items-center gap-3 rounded-card border border-border bg-muted px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <p className="text-xs text-muted-foreground">
-            {formatNumber(t.unmatched)} مستلم لم يمكن ربطه برسالة شات ووت — مستبعدون من القياس الدقيق.
+            {formatNumber(t.unmatched)} مستلم غير مرتبط برسالة Chatwoot — مستبعدين من القياس.
           </p>
         </div>
       )}
 
       <Section
         title="أداء الكامبينات"
-        hint="نسبة الرد محسوبة من المستلمين الذين أُرسل لهم هذا الكامبين"
+        hint="نسبة الرد من عدد المستلمين الفعلي"
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-full border border-border bg-background p-1">
@@ -221,7 +226,7 @@ export default function CampaignsPage() {
                 rows={rows}
                 getKey={(r) => `${r.sourceKey}:${r.jobId}`}
                 onRowClick={(r) => setSelected({ source: r.sourceKey, jobId: r.jobId })}
-                emptyTitle="لا توجد كامبينات — نفّذ مزامنة الكامبينات من الإعدادات"
+                emptyTitle="لا توجد كامبينات — شغّل Campaign Sync من الإعدادات"
               />
             </div>
 
@@ -254,6 +259,7 @@ export default function CampaignsPage() {
                       </div>
                       <div className="rounded-xl bg-surface-2 p-2.5 text-center">
                         <div className="text-base font-bold tnum text-primary">{formatPercent(r.replyRate, 1)}</div>
+                        <Meter value={r.replyRate} className="my-1" />
                         <div className="text-2xs text-muted-foreground">نسبة الرد</div>
                       </div>
                       <div className="rounded-xl bg-surface-2 p-2.5 text-center">
@@ -271,7 +277,7 @@ export default function CampaignsPage() {
               ))}
               {!rows.length && (
                 <li className="p-6 text-center text-sm text-muted-foreground">
-                  لا توجد كامبينات — نفّذ مزامنة الكامبينات من الإعدادات
+                  لا توجد كامبينات — شغّل Campaign Sync من الإعدادات
                 </li>
               )}
             </ul>
@@ -281,7 +287,7 @@ export default function CampaignsPage() {
 
       {data && (
         <p className="text-2xs text-muted-foreground">
-          آخر مزامنة كامبينات: {data.meta.lastCampaignSyncAt ? formatDateTime(data.meta.lastCampaignSyncAt) : "—"} · آخر
+          آخر Sync كامبينات: {data.meta.lastCampaignSyncAt ? formatDateTime(data.meta.lastCampaignSyncAt) : "—"} · آخر
           مطابقة: {data.meta.lastReconciledAt ? formatDateTime(data.meta.lastReconciledAt) : "—"}
         </p>
       )}

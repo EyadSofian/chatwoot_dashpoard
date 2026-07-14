@@ -121,7 +121,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
             <>
               {!row.hasActivity && (
                 <div className="mb-4 rounded-card border border-border bg-muted px-4 py-3 text-sm font-medium text-muted-foreground">
-                  لا يوجد نشاط لهذا التيم خلال الفترة المختارة
+                  لا نشاط في الفترة المختارة
                 </div>
               )}
 
@@ -159,7 +159,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                 work INSIDE this team.
               */}
               {data.members.length === 0 ? (
-                <EmptyState title="لا يوجد أعضاء" hint="نفّذ مزامنة التيمات من الإعدادات." />
+                <EmptyState title="لا يوجد أعضاء" hint="شغّل Sync من الإعدادات" />
               ) : (
                 <ul className="mb-6 space-y-2">
                   {data.members.map((m) => {
@@ -251,7 +251,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                   <Spinner />
                 </div>
               ) : visibleConvs.length === 0 ? (
-                <EmptyState title="لا توجد محادثات في الفترة" />
+                <EmptyState title="لا محادثات في الفترة" />
               ) : (
                 <>
                   <ul className="space-y-2">

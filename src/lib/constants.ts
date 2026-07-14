@@ -101,8 +101,8 @@ export const NAV_ITEMS = [
   { href: "/departments", key: "departments", labelAr: "الأقسام", labelEn: "Departments", icon: "Building2" },
   { href: "/conversations", key: "conversations", labelAr: "المحادثات", labelEn: "Conversations", icon: "MessagesSquare" },
   { href: "/campaigns", key: "campaigns", labelAr: "الكامبينات", labelEn: "Campaigns", icon: "Megaphone" },
-  { href: "/sla", key: "sla", labelAr: "مستوى الخدمة", labelEn: "SLA", icon: "Gauge" },
-  { href: "/fahd-bot", key: "fahd", labelAr: "بوت فهد", labelEn: "Fahd Bot", icon: "Bot" },
+  { href: "/sla", key: "sla", labelAr: "SLA", labelEn: "SLA", icon: "Gauge" },
+  { href: "/fahd-bot", key: "fahd", labelAr: "Fahd Bot", labelEn: "Fahd Bot", icon: "Bot" },
   { href: "/exports", key: "exports", labelAr: "التصدير", labelEn: "Exports", icon: "Download" },
   { href: "/settings", key: "settings", labelAr: "الإعدادات", labelEn: "Settings", icon: "Settings" },
 ] as const;

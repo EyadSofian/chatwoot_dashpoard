@@ -50,6 +50,6 @@ export async function POST(request: Request) {
     const state = await syncEntities(new ChatwootClient(), parsed.data);
     return NextResponse.json({ ok: true, state });
   } catch (error) {
-    return serverError("فشلت مزامنة بيانات شات ووت", (error as Error).message);
+    return serverError("فشلت مزامنة بيانات Chatwoot", (error as Error).message);
   }
 }

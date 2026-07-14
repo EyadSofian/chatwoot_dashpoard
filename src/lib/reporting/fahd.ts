@@ -23,7 +23,7 @@ export async function getFahd(f: ReportFilters): Promise<FahdResult> {
   const handoffs = await prisma.botHandoff.findMany({
     where: {
       handoffAt: { gte: f.from, lte: f.to },
-      ...(f.department ? { department: f.department } : {}),
+      ...(f.department?.length ? { department: { in: f.department } } : {}),
     },
     orderBy: { handoffAt: "desc" },
     take: 40000,

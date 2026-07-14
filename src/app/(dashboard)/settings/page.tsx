@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, Copy, RefreshCw, Database, Megaphone } from "lucide-react";
+import { Check, CheckCircle2, XCircle, Copy, RefreshCw, Database, Megaphone } from "lucide-react";
 import { useApiData, apiPost } from "@/lib/client/api";
 import type { SlaSettings } from "@/lib/settings";
 import { Card, CardTitle, Spinner, Badge } from "@/components/ui";
@@ -69,9 +69,9 @@ function MetadataSyncCard() {
   };
 
   const buttons: { label: string; body: Record<string, boolean> }[] = [
-    { label: "مزامنة الموظفين", body: { agents: true } },
-    { label: "مزامنة التيمات", body: { teams: true } },
-    { label: "مزامنة القنوات", body: { inboxes: true } },
+    { label: "Sync Agents", body: { agents: true } },
+    { label: "Sync Teams", body: { teams: true } },
+    { label: "Sync Inboxes", body: { inboxes: true } },
   ];
 
   return (
@@ -83,16 +83,16 @@ function MetadataSyncCard() {
             disabled={busy !== null}
             className="btn-primary px-3 py-1.5 text-xs"
           >
-            {busy === "all" ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} مزامنة الكل
+            {busy === "all" ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} Sync All
           </button>
         }
       >
-        بيانات شات ووت (الموظفون والتيمات)
+        Chatwoot Metadata
       </CardTitle>
 
       {data && !data.synced && (
         <div className="mb-3 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-xs font-semibold text-warning-fg">
-          لم تتم المزامنة بعد — لن يظهر كل الموظفين والتيمات قبلها.
+          لسه متعملتش. الموظفين والتيمات مش هيظهروا قبلها.
         </div>
       )}
 
@@ -122,14 +122,14 @@ function MetadataSyncCard() {
           <dd className="text-xs font-bold">
             {data?.lastSyncAt ? new Date(data.lastSyncAt).toLocaleString("ar-EG") : "—"}
           </dd>
-          <dt className="text-2xs text-muted-foreground">آخر مزامنة</dt>
+          <dt className="text-2xs text-muted-foreground">آخر Sync</dt>
         </div>
       </dl>
 
-      {result && <p className="mt-2 text-xs font-semibold text-success-fg">تمت المزامنة: {result}</p>}
+      {result && <p className="mt-2 text-xs font-semibold text-success-fg">تم: {result}</p>}
       {error && <p className="mt-2 text-xs font-semibold text-destructive-fg">{error}</p>}
       <p className="mt-2 text-2xs text-muted-foreground">
-        الـ Backfill بينفّذ المزامنة دي تلقائيًا في البداية.
+        Backfill بيشغّلها تلقائيًا في الأول.
       </p>
     </Card>
   );
@@ -333,7 +333,7 @@ function SlaForm() {
 
   return (
     <Card className="lg:col-span-2">
-      <CardTitle action={<button onClick={save} disabled={saving} className="btn-primary text-xs">{saving ? <Spinner /> : null} حفظ {saved && "✓"}</button>}>
+      <CardTitle action={<button onClick={save} disabled={saving} className="btn-primary text-xs">{saving ? <Spinner /> : null} حفظ {saved ? <Check className="h-3.5 w-3.5" /> : null}</button>}>
         إعدادات SLA وساعات العمل
       </CardTitle>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

@@ -76,7 +76,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         {/* Identity — fixed head */}
         <div className="shrink-0 border-b border-border px-5 py-5">
           <Logo />
-          <p className="mt-2 truncate text-2xs text-muted-foreground">لوحة تحليلات خدمة العملاء</p>
+          <p className="mt-2 truncate text-2xs text-muted-foreground">تحليلات خدمة العملاء</p>
         </div>
 
         {/* Only THIS scrolls, never the page */}

@@ -134,6 +134,41 @@ export function Kpi({
   );
 }
 
+/**
+ * A rate, shown as a bar as well as a number. A percentage on its own tells you
+ * the value; the bar tells you where it sits — which is the thing you actually
+ * scan a column of campaigns or teams for.
+ */
+export function Meter({
+  value,
+  tone = "brand",
+  className,
+}: {
+  /** 0–1. */
+  value: number;
+  tone?: Tone;
+  className?: string;
+}) {
+  const pct = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100;
+  const fill: Record<Tone, string> = {
+    brand: "bg-primary",
+    violet: "bg-accent",
+    success: "bg-success",
+    warning: "bg-warning",
+    danger: "bg-destructive",
+    neutral: "bg-muted-foreground/50",
+  };
+  return (
+    <span
+      className={cn("block h-1.5 w-full overflow-hidden rounded-full bg-muted", className)}
+      role="img"
+      aria-label={`${pct.toFixed(1)}%`}
+    >
+      <span className={cn("block h-full rounded-full transition-[width] duration-500", fill[tone])} style={{ width: `${pct}%` }} />
+    </span>
+  );
+}
+
 /** Compact stat used inside cards (no chrome). */
 export function MiniStat({ label, value, tone = "neutral" }: { label: string; value: React.ReactNode; tone?: Tone }) {
   const color =
