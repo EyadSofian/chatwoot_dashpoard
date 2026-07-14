@@ -6,15 +6,8 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import type { FilterOptions } from "@/lib/reporting/filterOptions";
 import { DEPARTMENT_LABELS_AR, STATUS_LABELS_AR, type Department } from "@/lib/constants";
+import { RANGE_PRESETS, DEFAULT_RANGE, resolveRange, parseDateInput, toDateInput, type RangeKey } from "@/lib/dateRange";
 import { cn } from "@/components/ui";
-
-const PRESETS: { label: string; days: number }[] = [
-  { label: "اليوم", days: 0 },
-  { label: "٧ أيام", days: 7 },
-  { label: "٣٠ يوم", days: 30 },
-  { label: "٦٠ يوم", days: 60 },
-  { label: "٩٠ يوم", days: 90 },
-];
 
 const FILTER_KEYS = [
   "department",
@@ -49,47 +42,87 @@ export function FilterBar() {
     [router, pathname, searchParams],
   );
 
-  const applyPreset = (days: number) => {
-    const to = new Date();
-    const from = new Date();
-    if (days === 0) from.setHours(0, 0, 0, 0);
-    else from.setTime(to.getTime() - days * 86400 * 1000);
-    setParams({ from: from.toISOString(), to: to.toISOString() });
-  };
-
   const get = (key: string) => searchParams.get(key) ?? "";
 
-  const activePreset = () => {
-    const from = searchParams.get("from");
-    if (!from) return 30;
-    const diff = Math.round((Date.now() - new Date(from).getTime()) / 86400000);
-    return PRESETS.find((p) => p.days === diff)?.days ?? -1;
+  /** Presets write both the key (for the active chip) and the resolved window. */
+  const applyPreset = (key: RangeKey) => {
+    const { from, to } = resolveRange(key);
+    setParams({ range: key, from: from.toISOString(), to: to.toISOString() });
   };
 
+  /** Editing either date field switches the selection to a custom window. */
+  const applyCustomDate = (side: "from" | "to", value: string) => {
+    if (!value) {
+      setParams({ [side]: undefined });
+      return;
+    }
+    const parsed = parseDateInput(value, { endOfDay: side === "to" });
+    if (!parsed) return;
+    setParams({ range: "custom", [side]: parsed.toISOString() });
+  };
+
+  const activeRange = get("range") || DEFAULT_RANGE;
   const activeCount = FILTER_KEYS.filter((k) => searchParams.get(k)).length;
+
+  // Fall back to the default window so the pickers are never blank on first load.
+  const fallback = resolveRange(DEFAULT_RANGE);
+  const fromValue = toDateInput(get("from") || fallback.from);
+  const toValue = toDateInput(get("to") || fallback.to);
 
   return (
     <div className="sticky top-[73px] z-20 border-b border-border bg-surface/85 px-5 py-3 backdrop-blur-md">
       <div className="mx-auto flex max-w-[1600px] flex-col gap-3">
-        {/* Row 1 — range, search, toggle */}
+        {/* Period */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex rounded-full border border-border bg-background p-1">
-            {PRESETS.map((p) => (
+          <span className="text-xs font-bold text-muted-foreground">الفترة</span>
+
+          <div className="flex flex-wrap gap-1 rounded-full border border-border bg-background p-1">
+            {RANGE_PRESETS.map((p) => (
               <button
-                key={p.days}
-                onClick={() => applyPreset(p.days)}
+                key={p.key}
+                onClick={() => applyPreset(p.key)}
                 className={cn(
                   "cursor-pointer rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-150",
-                  activePreset() === p.days
+                  activeRange === p.key
                     ? "bg-primary text-on-primary shadow-brand"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {p.label}
+                {p.labelAr}
               </button>
             ))}
+            {activeRange === "custom" && (
+              <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary shadow-brand">
+                مخصص
+              </span>
+            )}
           </div>
 
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="font-medium">من تاريخ</span>
+            <input
+              type="date"
+              value={fromValue}
+              max={toValue || undefined}
+              onChange={(e) => applyCustomDate("from", e.target.value)}
+              className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+            />
+          </label>
+
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="font-medium">إلى تاريخ</span>
+            <input
+              type="date"
+              value={toValue}
+              min={fromValue || undefined}
+              onChange={(e) => applyCustomDate("to", e.target.value)}
+              className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
+            />
+          </label>
+        </div>
+
+        {/* Search + filters */}
+        <div className="flex flex-wrap items-center gap-2.5">
           <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
             <Search
               className="pointer-events-none absolute inset-y-0 my-auto h-4 w-4 text-muted-foreground"
@@ -135,7 +168,6 @@ export function FilterBar() {
           )}
         </div>
 
-        {/* Row 2 — the rest, collapsed by default so the page breathes */}
         {(expanded || activeCount > 0) && (
           <div className="flex flex-wrap items-center gap-2">
             <FilterSelect

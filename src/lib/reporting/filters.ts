@@ -13,6 +13,8 @@ export interface ReportFilters {
   sla?: "breached" | "near_breach" | "healthy";
   needsReply?: boolean;
   search?: string;
+  /** Agents report only: hide agents with no conversations in the period. */
+  activeOnly?: boolean;
 }
 
 function parseIntOrUndef(value: string | null): number | undefined {
@@ -46,6 +48,7 @@ export function parseFilters(searchParams: URLSearchParams): ReportFilters {
     sla: (clean(searchParams.get("sla")) as ReportFilters["sla"]) || undefined,
     needsReply: searchParams.get("needsReply") === "true" ? true : undefined,
     search: clean(searchParams.get("search")),
+    activeOnly: searchParams.get("activeOnly") === "true" ? true : undefined,
   };
 }
 
@@ -97,5 +100,6 @@ export function filtersToQuery(f: ReportFilters): string {
   if (f.sla) p.set("sla", f.sla);
   if (f.needsReply) p.set("needsReply", "true");
   if (f.search) p.set("search", f.search);
+  if (f.activeOnly) p.set("activeOnly", "true");
   return p.toString();
 }

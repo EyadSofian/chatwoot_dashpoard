@@ -59,7 +59,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
     }
 
     case "agents": {
-      const rows = await getAgentLeaderboard(filters);
+      // Same roster the screen shows — every agent, zeros included.
+      const { rows } = await getAgentLeaderboard(filters);
       const columns: CsvColumn<(typeof rows)[number]>[] = [
         { key: "name", label: "الموظف" },
         { key: "email", label: "البريد" },
