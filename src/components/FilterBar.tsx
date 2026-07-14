@@ -235,6 +235,52 @@ export function FilterBar() {
           )}
         </div>
 
+        {/* Applied filters — visible, and each one removable on its own. */}
+        {activeCount > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-2xs font-bold text-muted-foreground">مُطبَّق:</span>
+            {FIELDS.flatMap((f) =>
+              getList(f.key).map((v) => {
+                const label = f.options.find((o) => o.value === v)?.label ?? v;
+                return (
+                  <button
+                    key={`${f.key}:${v}`}
+                    onClick={() => setList(f.key, getList(f.key).filter((x) => x !== v))}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-primary/30 bg-primary/5 py-1 pe-1.5 ps-2.5 text-2xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                  >
+                    <span className="truncate">
+                      {f.label}: {label}
+                    </span>
+                    <X className="h-3 w-3 shrink-0" />
+                  </button>
+                );
+              }),
+            )}
+            {get("needsReply") === "true" && (
+              <button
+                onClick={() => setParams({ needsReply: undefined })}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-destructive/30 bg-destructive/5 py-1 pe-1.5 ps-2.5 text-2xs font-semibold text-destructive-fg"
+              >
+                يحتاج رد <X className="h-3 w-3" />
+              </button>
+            )}
+            {get("search") && (
+              <button
+                onClick={() => setParams({ search: undefined })}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-muted py-1 pe-1.5 ps-2.5 text-2xs font-semibold text-muted-foreground"
+              >
+                بحث: {get("search")} <X className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              onClick={() => router.replace(pathname, { scroll: false })}
+              className="cursor-pointer rounded-full px-2 py-1 text-2xs font-bold text-muted-foreground underline-offset-2 transition-colors hover:text-destructive-fg hover:underline"
+            >
+              مسح كل الفلاتر
+            </button>
+          </div>
+        )}
+
         {/* Desktop filter row */}
         {(expanded || activeCount > 0) && (
           <div className="hidden flex-wrap items-center gap-2 lg:flex">

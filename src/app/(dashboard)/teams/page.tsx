@@ -62,7 +62,13 @@ export default function TeamsPage() {
     },
     // Trimmed to what you actually compare teams on. The rest lives in the sheet.
     { key: "memberCount", header: "الأعضاء", align: "end", render: (r) => num(r.memberCount) },
-    { key: "conversations", header: "محادثات", align: "end", render: (r) => num(r.conversations) },
+    {
+      key: "currentWorkload",
+      header: "الحمل الحالي",
+      align: "end",
+      render: (r) => <span className="tnum font-bold">{formatNumber(r.currentWorkload)}</span>,
+    },
+    { key: "conversations", header: "محادثات الفترة", align: "end", render: (r) => num(r.conversations) },
     { key: "open", header: "مفتوحة", align: "end", render: (r) => num(r.open) },
     {
       key: "needsReply",
@@ -223,8 +229,8 @@ export default function TeamsPage() {
                         <StatStrip
                           className="mt-3"
                           items={[
-                            { label: "محادثات", value: formatNumber(r.conversations) },
-                            { label: "مفتوحة", value: formatNumber(r.open) },
+                            { label: "الحمل الحالي", value: formatNumber(r.currentWorkload), tone: "brand" },
+                            { label: "محادثات الفترة", value: formatNumber(r.conversations) },
                             {
                               label: "متوسط الرد",
                               value: r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—",

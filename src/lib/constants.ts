@@ -105,6 +105,7 @@ export const NAV_ITEMS = [
   { href: "/sla", key: "sla", labelAr: "SLA", labelEn: "SLA", icon: "Gauge" },
   { href: "/fahd-bot", key: "fahd", labelAr: "Fahd Bot", labelEn: "Fahd Bot", icon: "Bot" },
   { href: "/exports", key: "exports", labelAr: "التصدير", labelEn: "Exports", icon: "Download" },
+  { href: "/audit", key: "audit", labelAr: "تدقيق البيانات", labelEn: "Accuracy Audit", icon: "ShieldCheck" },
   { href: "/settings", key: "settings", labelAr: "الإعدادات", labelEn: "Settings", icon: "Settings" },
 ] as const;
 
@@ -117,7 +118,7 @@ export type NavKey = (typeof NAV_ITEMS)[number]["key"];
 export const NAV_GROUPS: { titleAr: string; keys: NavKey[] }[] = [
   { titleAr: "التحليلات", keys: ["overview", "agents", "teams", "departments", "conversations", "campaigns", "labels"] },
   { titleAr: "التشغيل", keys: ["sla", "fahd", "exports"] },
-  { titleAr: "النظام", keys: ["settings"] },
+  { titleAr: "النظام", keys: ["audit", "settings"] },
 ];
 
 export const SESSION_COOKIE = "engosoft_analytics_session";

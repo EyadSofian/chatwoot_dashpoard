@@ -54,9 +54,14 @@ export function parseFilters(searchParams: URLSearchParams): ReportFilters {
 
   const clean = (v: string | null) => (v && v !== "all" && v !== "" ? v : undefined);
 
+  const safeFrom = Number.isNaN(from.getTime()) ? defaultFrom : from;
+  const safeTo = Number.isNaN(to.getTime()) ? now : to;
+  // A reversed range would silently return nothing. Swap rather than lie.
+  const [lo, hi] = safeFrom.getTime() <= safeTo.getTime() ? [safeFrom, safeTo] : [safeTo, safeFrom];
+
   return {
-    from: Number.isNaN(from.getTime()) ? defaultFrom : from,
-    to: Number.isNaN(to.getTime()) ? now : to,
+    from: lo,
+    to: hi,
     department: strList(searchParams.get("department")),
     teamId: numList(searchParams.get("teamId")),
     agentId: numList(searchParams.get("agentId")),

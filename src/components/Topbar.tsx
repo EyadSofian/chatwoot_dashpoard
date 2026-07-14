@@ -18,6 +18,7 @@ const SUBTITLE: Record<string, string> = {
   sla: "الخروقات والمتأخرات",
   fahd: "تسليمات البوت للموظفين",
   exports: "تصدير CSV بنفس الفلاتر",
+  audit: "مطابقة الأرقام مع Chatwoot",
   settings: "الربط والمزامنة و SLA",
 };
 

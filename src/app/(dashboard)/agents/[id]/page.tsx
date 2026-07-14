@@ -62,11 +62,11 @@ export default function AgentDetailPage() {
 
       {s && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Kpi label="مُسند" value={formatNumber(s.assigned)} />
-          <Kpi label="تم الرد" value={formatNumber(s.replied)} tone="success" />
-          <Kpi label="تحتاج رد" value={formatNumber(s.needsReply)} tone="warning" />
-          <Kpi label="محلولة" value={formatNumber(s.resolved)} />
-          <Kpi label="متوسط الرد" value={formatDurationShort(s.avgResponseSeconds)} />
+          <Kpi label="الحمل الحالي" value={formatNumber(s.currentWorkload)} tone="accent" sub="الحالة الآن" />
+          <Kpi label="تحتاج رد الآن" value={formatNumber(s.needsReplyNow)} tone="warning" />
+          <Kpi label="أُسندت في الفترة" value={formatNumber(s.assignedInPeriod)} />
+          <Kpi label="أُنشئت في الفترة" value={formatNumber(s.createdInPeriod)} />
+          <Kpi label="متوسط الرد" value={formatDurationShort(s.avgResponseSeconds)} sub={s.p90ResponseSeconds != null ? `p90: ${formatDurationShort(s.p90ResponseSeconds)}` : undefined} />
           <Kpi label="خرق SLA" value={formatNumber(s.slaBreaches)} tone="danger" />
         </div>
       )}

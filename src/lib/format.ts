@@ -62,3 +62,14 @@ export function average(values: number[]): number | null {
   if (!nums.length) return null;
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
+
+/**
+ * Nearest-rank percentile. p90 is the number that matters for response time:
+ * an average hides the tail, and the tail is what a customer actually feels.
+ */
+export function percentile(values: number[], p: number): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length);
+  return sorted[Math.min(Math.max(rank, 1), sorted.length) - 1]!;
+}

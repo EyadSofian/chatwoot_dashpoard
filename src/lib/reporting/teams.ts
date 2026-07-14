@@ -18,6 +18,9 @@ export interface TeamRow {
   department: string | null;
   memberCount: number;
   activeMembers: number;
+  /** Live: open + pending + snoozed on this team right now. No date bound. */
+  currentWorkload: number;
+  /** Conversations attributed to the team in the period (see teamAttribution). */
   conversations: number;
   open: number;
   pending: number;
@@ -59,6 +62,8 @@ export interface TeamMemberRow {
 export interface TeamsSummary {
   totalTeams: number;
   activeTeams: number;
+  /** Live total across teams. */
+  currentWorkload: number;
   conversations: number;
   avgResponseSeconds: number | null;
   slaBreaches: number;
@@ -127,6 +132,7 @@ function emptyTeamRow(teamCwId: number, name: string, department: string | null,
     department,
     memberCount,
     activeMembers: 0,
+    currentWorkload: 0,
     conversations: 0,
     open: 0,
     pending: 0,
@@ -160,8 +166,10 @@ export function buildTeamsReport(input: {
   activeOnly?: boolean;
   /** Assignment-time team per conversation, for the ones Chatwoot no longer teams. */
   assignmentTeamByConversation?: ReadonlyMap<number, number>;
+  /** Live active conversations per team id — NOT filtered by the date range. */
+  currentByTeam?: ReadonlyMap<number, number>;
 }): TeamsReport {
-  const { teams, memberships, conversations, activeOnly = false, assignmentTeamByConversation } = input;
+  const { teams, memberships, conversations, activeOnly = false, assignmentTeamByConversation, currentByTeam } = input;
 
   const byAgent = membershipIndex(memberships);
   const byTeam = membersByTeam(memberships);
@@ -240,6 +248,14 @@ export function buildTeamsReport(input: {
     row.activeMembers = b.agents.size;
   }
 
+  // Live workload — a separate question from "what happened in the period".
+  if (currentByTeam) {
+    for (const [teamId, n] of currentByTeam) {
+      const r = rows.get(teamId);
+      if (r) r.currentWorkload = n;
+    }
+  }
+
   const all = [...rows.values()];
   const real = all.filter((r) => r.teamCwId !== NO_TEAM_ID);
 
@@ -247,11 +263,14 @@ export function buildTeamsReport(input: {
   const summary: TeamsSummary = {
     totalTeams: real.length,
     activeTeams: real.filter((r) => r.hasActivity).length,
+    currentWorkload: all.reduce((n, r) => n + r.currentWorkload, 0),
     conversations: conversations.length,
     avgResponseSeconds: average(conversations.map((c) => c.responseSeconds).filter((v): v is number => v !== null)),
     slaBreaches: all.reduce((sum, r) => sum + r.slaBreaches, 0),
     needsReply: all.reduce((sum, r) => sum + r.needsReply, 0),
   };
+
+  for (const r of all) r.hasActivity = r.hasActivity || r.currentWorkload > 0;
 
   const visible = activeOnly ? all.filter((r) => r.hasActivity) : all;
 
@@ -401,11 +420,24 @@ export async function getTeams(f: ReportFilters): Promise<TeamsReport> {
   // and the caller still expects to see every team.
   const where = conversationWhere(f);
 
-  const [teams, memberships, conversations] = await Promise.all([
+  const [teams, memberships, conversations, live] = await Promise.all([
     prisma.team.findMany({ select: { id: true, name: true, department: true } }),
     prisma.teamMembership.findMany({ select: { teamCwId: true, agentCwId: true } }),
     prisma.conversation.findMany({ where, select: CONVERSATION_SELECT, take: 40000 }),
+    // Live workload: active statuses, every other filter applied, NO date bound.
+    prisma.conversation.groupBy({
+      by: ["teamCwId"],
+      where: {
+        ...conversationWhere(f, { ignoreDate: true }),
+        status: { in: ["open", "pending", "snoozed"] },
+        teamCwId: { not: null },
+      },
+      _count: { _all: true },
+    }),
   ]);
+
+  const currentByTeam = new Map<number, number>();
+  for (const g of live) if (g.teamCwId !== null) currentByTeam.set(g.teamCwId, g._count._all);
 
   const assignmentTeamByConversation = await assignmentTeams(conversations);
 
@@ -415,6 +447,7 @@ export async function getTeams(f: ReportFilters): Promise<TeamsReport> {
     conversations,
     activeOnly: f.activeOnly,
     assignmentTeamByConversation,
+    currentByTeam,
   });
 }
 

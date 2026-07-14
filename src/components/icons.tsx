@@ -10,6 +10,7 @@ import {
   Download,
   Settings,
   Tags,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ const MAP: Record<string, LucideIcon> = {
   Download,
   Settings,
   Tags,
+  ShieldCheck,
 };
 
 export function NavIcon({ name, className }: { name: string; className?: string }) {

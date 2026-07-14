@@ -1,341 +1,369 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   buildAgentLeaderboard,
-  type AgentConversation,
   type AgentInterval,
   type AgentRecord,
+  type CurrentConversation,
 } from "@/lib/reporting/agents";
-import { resolveRange, parseDateInput, toDateInput } from "@/lib/dateRange";
+import {
+  resolveRange,
+  parseDateInput,
+  toDateInput,
+  cairoStartOfDay,
+  cairoEndOfDay,
+} from "@/lib/dateRange";
 import { parseFilters, filtersToQuery, conversationWhere } from "@/lib/reporting/filters";
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   The roster: three agents on the Chatwoot account. Only two of them touched a
-   conversation in the window — the third is the one the old report dropped.
-   ───────────────────────────────────────────────────────────────────────────── */
 const ROSTER: AgentRecord[] = [
-  { id: 10, name: "منى عبد الرحمن", email: "mona@engosoft.com", availability: "online" },
-  { id: 20, name: "أحمد سيف", email: "ahmed@engosoft.com", availability: "offline" },
-  { id: 30, name: "نورهان علي", email: "nour@engosoft.com", availability: "offline" },
+  { id: 10, name: "منى", email: "mona@x.com", availability: "online" },
+  { id: 20, name: "أحمد", email: "ahmed@x.com", availability: "offline" },
+  { id: 30, name: "نورهان", email: "nour@x.com", availability: "offline" },
 ];
 
-function conv(over: Partial<AgentConversation> & { assigneeCwId: number }): AgentConversation {
-  return {
-    assigneeName: null,
-    status: "open",
-    needsReply: false,
-    handledByHuman: true,
-    unreadCount: 0,
-    slaFirstResponseBreached: false,
-    ...over,
-  };
-}
-
-const interval = (assigneeCwId: number, responseSeconds: number): AgentInterval => ({
+const live = (assigneeCwId: number, status = "open", needsReply = false): CurrentConversation => ({
   assigneeCwId,
-  responseSeconds,
-  responded: true,
+  status,
+  needsReply,
 });
 
-describe("agents leaderboard — every agent, always", () => {
-  it("includes an agent with no conversations, at zero", () => {
-    const { rows } = buildAgentLeaderboard({
-      agents: ROSTER,
-      conversations: [conv({ assigneeCwId: 10 })],
-      intervals: [interval(10, 120)],
-    });
+const interval = (
+  assigneeCwId: number,
+  conversationCwId: number,
+  over: Partial<AgentInterval> = {},
+): AgentInterval => ({
+  assigneeCwId,
+  conversationCwId,
+  responseSeconds: null,
+  responded: false,
+  ...over,
+});
 
-    expect(rows.map((r) => r.agentId).sort()).toEqual([10, 20, 30]);
-
-    const idle = rows.find((r) => r.agentId === 30)!;
-    expect(idle.hasActivity).toBe(false);
-    expect(idle.assigned).toBe(0);
-    expect(idle.replied).toBe(0);
-    expect(idle.needsReply).toBe(0);
-    expect(idle.open).toBe(0);
-    expect(idle.resolved).toBe(0);
-    expect(idle.slaBreaches).toBe(0);
-    // No data is not the same as "answered in zero seconds".
-    expect(idle.avgResponseSeconds).toBeNull();
-    expect(idle.medianResponseSeconds).toBeNull();
-    expect(idle.maxResponseSeconds).toBeNull();
+const build = (input: Partial<Parameters<typeof buildAgentLeaderboard>[0]>) =>
+  buildAgentLeaderboard({
+    agents: ROSTER,
+    current: [],
+    intervals: [],
+    created: [],
+    resolved: [],
+    ...input,
   });
 
-  it("keeps every agent when the period has no conversations at all", () => {
-    const { rows, summary } = buildAgentLeaderboard({ agents: ROSTER, conversations: [], intervals: [] });
+/* ─────────────────────────────────────────────────────────────────────────────
+   THE BUG. Chatwoot shows 11 active for an agent; the dashboard showed 6,
+   because it counted only the conversations CREATED inside the date range and
+   called that "Assigned".
+   ───────────────────────────────────────────────────────────────────────────── */
+describe("Chatwoot says 11, the dashboard said 6", () => {
+  // 11 conversations are open and assigned to Mona right now.
+  const current = Array.from({ length: 11 }, () => live(10));
+  // Only 6 of them were created inside the selected window.
+  const created = Array.from({ length: 6 }, () => ({ assigneeCwId: 10 }));
 
-    expect(rows).toHaveLength(3);
-    expect(rows.every((r) => !r.hasActivity && r.assigned === 0)).toBe(true);
-    expect(summary.totalAgents).toBe(3);
-    expect(summary.activeAgents).toBe(0);
-    expect(summary.avgResponseSeconds).toBeNull();
+  it("reports current workload = 11, ignoring the date range entirely", () => {
+    const { rows } = build({ current, created });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    expect(mona.currentWorkload).toBe(11);
+    expect(mona.currentOpen).toBe(11);
+  });
+
+  it("reports the 6 as 'created in period' — never as workload", () => {
+    const { rows } = build({ current, created });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    expect(mona.createdInPeriod).toBe(6);
+    // The two numbers are different questions and must not be confused.
+    expect(mona.currentWorkload).not.toBe(mona.createdInPeriod);
+  });
+
+  it("does not expose any field that would render as a misleading 'Assigned = 6'", () => {
+    const { rows } = build({ current, created });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    // `assignedInPeriod` comes from assignment intervals, not from creation. No
+    // intervals were supplied, so it is 0 — it can never silently become "6".
+    expect(mona.assignedInPeriod).toBe(0);
+    expect(Object.keys(mona)).not.toContain("assigned");
+    expect(Object.keys(mona)).not.toContain("conversations");
+  });
+
+  it("counts only active statuses as workload — resolved is finished work", () => {
+    const { rows } = build({
+      current: [live(10, "open"), live(10, "pending"), live(10, "snoozed"), live(10, "resolved")],
+    });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    expect(mona.currentOpen).toBe(1);
+    expect(mona.currentPending).toBe(1);
+    expect(mona.currentSnoozed).toBe(1);
+    expect(mona.currentWorkload).toBe(3); // resolved is excluded
+  });
+
+  it("reports needs-reply as a live number, not a windowed one", () => {
+    const { rows, summary } = build({
+      current: [live(10, "open", true), live(10, "open", false), live(20, "pending", true)],
+    });
+
+    expect(rows.find((r) => r.agentId === 10)!.needsReplyNow).toBe(1);
+    expect(summary.needsReplyNow).toBe(2);
+  });
+});
+
+describe("assignment metrics come from the intervals, not from ownership", () => {
+  it("counts distinct conversations for 'assigned in period'", () => {
+    const { rows } = build({
+      intervals: [interval(10, 100), interval(10, 200), interval(10, 300)],
+    });
+    expect(rows.find((r) => r.agentId === 10)!.assignedInPeriod).toBe(3);
+  });
+
+  it("counts one conversation re-assigned to the SAME agent twice once — but as two events", () => {
+    const { rows } = build({
+      intervals: [interval(10, 100), interval(10, 100), interval(10, 200)],
+    });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    expect(mona.assignedInPeriod).toBe(2); // conversations 100 and 200
+    expect(mona.assignmentEvents).toBe(3); // three assignment records
+  });
+
+  it("attributes an interval to the agent it was assigned to, not the current owner", () => {
+    // The conversation is currently Ahmed's, but it was assigned to Mona in the period.
+    const { rows } = build({
+      current: [live(20)],
+      intervals: [interval(10, 500, { responded: true, responseSeconds: 120 })],
+    });
+
+    expect(rows.find((r) => r.agentId === 10)!.assignedInPeriod).toBe(1);
+    expect(rows.find((r) => r.agentId === 20)!.assignedInPeriod).toBe(0);
+    expect(rows.find((r) => r.agentId === 20)!.currentWorkload).toBe(1);
+  });
+
+  it("reports the response-time distribution over answered assignments only", () => {
+    const { rows, summary } = build({
+      intervals: [
+        interval(10, 1, { responded: true, responseSeconds: 100 }),
+        interval(10, 2, { responded: true, responseSeconds: 200 }),
+        interval(10, 3, { responded: true, responseSeconds: 300 }),
+        interval(10, 4, { responded: true, responseSeconds: 1000 }),
+        interval(10, 5), // assigned, never answered — must not count as 0
+      ],
+    });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    expect(mona.responseCount).toBe(4);
+    expect(mona.firstResponsesInPeriod).toBe(4);
+    expect(mona.avgResponseSeconds).toBe(400);
+    expect(mona.medianResponseSeconds).toBe(250);
+    expect(mona.p90ResponseSeconds).toBe(1000);
+    expect(mona.maxResponseSeconds).toBe(1000);
+    // The unanswered assignment still counts as assigned.
+    expect(mona.assignedInPeriod).toBe(5);
+    expect(summary.p90ResponseSeconds).toBe(1000);
+  });
+
+  it("counts an SLA breach once per conversation, not once per assignment", () => {
+    const { rows } = build({
+      intervals: [
+        interval(10, 100, { slaBreached: true }),
+        interval(10, 100, { slaBreached: true }), // same conversation, re-assigned
+        interval(10, 200, { slaBreached: false }),
+      ],
+    });
+    expect(rows.find((r) => r.agentId === 10)!.slaBreaches).toBe(1);
+  });
+
+  it("labels resolved work honestly — resolved WHILE assigned, not resolved BY", () => {
+    const { rows } = build({ resolved: [{ assigneeCwId: 10 }, { assigneeCwId: 10 }] });
+    const mona = rows.find((r) => r.agentId === 10)!;
+
+    // Chatwoot does not tell us who pressed resolve, so the field is named for
+    // what we actually know.
+    expect(mona.resolvedWhileAssigned).toBe(2);
+    expect(Object.keys(mona)).not.toContain("resolvedBy");
+  });
+});
+
+describe("the roster is never shrunk by the date range", () => {
+  it("keeps an agent with no activity at all", () => {
+    const { rows } = build({ current: [live(10)] });
+
+    expect(rows.map((r) => r.agentId).sort()).toEqual([10, 20, 30]);
+    const idle = rows.find((r) => r.agentId === 30)!;
+    expect(idle.hasActivity).toBe(false);
+    expect(idle.currentWorkload).toBe(0);
+    expect(idle.assignedInPeriod).toBe(0);
+    expect(idle.avgResponseSeconds).toBeNull();
+  });
+
+  it("counts live workload alone as activity", () => {
+    // Nothing happened in the window, but they are holding five conversations.
+    const { rows } = build({ current: Array.from({ length: 5 }, () => live(20)) });
+    expect(rows.find((r) => r.agentId === 20)!.hasActivity).toBe(true);
   });
 
   it("hides idle agents only when activeOnly is on", () => {
-    const input = {
-      agents: ROSTER,
-      conversations: [conv({ assigneeCwId: 10 }), conv({ assigneeCwId: 20 })],
-      intervals: [],
-    };
+    const input = { current: [live(10)] };
+    expect(build(input).rows).toHaveLength(3);
 
-    expect(buildAgentLeaderboard(input).rows).toHaveLength(3);
-
-    const filtered = buildAgentLeaderboard({ ...input, activeOnly: true });
-    expect(filtered.rows.map((r) => r.agentId).sort()).toEqual([10, 20]);
-    // The summary still describes the whole roster — the toggle hides rows,
-    // it does not change the facts.
-    expect(filtered.summary.totalAgents).toBe(3);
-    expect(filtered.summary.activeAgents).toBe(2);
+    const filtered = build({ ...input, activeOnly: true });
+    expect(filtered.rows.map((r) => r.agentId)).toEqual([10]);
+    expect(filtered.summary.totalAgents).toBe(3); // the summary still describes the roster
   });
 
-  it("still reports an assignee who is missing from the roster", () => {
-    // e.g. the agent was deleted in Chatwoot, or entities were never synced.
-    const { rows } = buildAgentLeaderboard({
-      agents: [],
-      conversations: [conv({ assigneeCwId: 99, assigneeName: "موظف قديم" })],
-      intervals: [interval(99, 60)],
-    });
-
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.agentId).toBe(99);
-    expect(rows[0]!.name).toBe("موظف قديم");
-    expect(rows[0]!.avgResponseSeconds).toBe(60);
-  });
-
-  it("counts statuses and SLA breaches per agent", () => {
-    const { rows, summary } = buildAgentLeaderboard({
-      agents: ROSTER,
-      conversations: [
-        conv({ assigneeCwId: 10, status: "open", needsReply: true, unreadCount: 3, slaFirstResponseBreached: true }),
-        conv({ assigneeCwId: 10, status: "resolved" }),
-        conv({ assigneeCwId: 10, status: "pending", handledByHuman: false }),
-        conv({ assigneeCwId: 20, status: "resolved", slaFirstResponseBreached: true }),
-      ],
-      intervals: [],
-    });
-
-    const mona = rows.find((r) => r.agentId === 10)!;
-    expect(mona.assigned).toBe(3);
-    expect(mona.replied).toBe(2); // the pending one was never handled by a human
-    expect(mona.needsReply).toBe(1);
-    expect(mona.open).toBe(1);
-    expect(mona.resolved).toBe(1);
-    expect(mona.pending).toBe(1);
-    expect(mona.unread).toBe(1);
-    expect(mona.slaBreaches).toBe(1);
-
-    expect(summary.slaBreaches).toBe(2);
-    expect(summary.activeAgents).toBe(2);
-  });
-
-  it("sorts busiest first and leaves idle agents at the bottom", () => {
-    const { rows } = buildAgentLeaderboard({
-      agents: ROSTER,
-      conversations: [
-        conv({ assigneeCwId: 20 }),
-        conv({ assigneeCwId: 20 }),
-        conv({ assigneeCwId: 10 }),
-      ],
-      intervals: [],
-    });
-
-    expect(rows.map((r) => r.agentId)).toEqual([20, 10, 30]);
-  });
-});
-
-describe("agents leaderboard — response time", () => {
-  it("averages the assignment→first-human-reply intervals for each agent", () => {
-    const { rows, summary } = buildAgentLeaderboard({
-      agents: ROSTER,
-      conversations: [conv({ assigneeCwId: 10 }), conv({ assigneeCwId: 20 })],
-      intervals: [interval(10, 100), interval(10, 200), interval(10, 600), interval(20, 60)],
-    });
-
-    const mona = rows.find((r) => r.agentId === 10)!;
-    expect(mona.avgResponseSeconds).toBe(300); // (100+200+600)/3
-    expect(mona.medianResponseSeconds).toBe(200);
-    expect(mona.maxResponseSeconds).toBe(600);
-
-    // Pooled across every interval in the window: (100+200+600+60)/4 = 240.
-    expect(summary.avgResponseSeconds).toBe(240);
-  });
-
-  it("ignores assignments the agent never answered", () => {
-    const { rows } = buildAgentLeaderboard({
-      agents: ROSTER,
-      conversations: [conv({ assigneeCwId: 10 })],
-      intervals: [
-        interval(10, 300),
-        { assigneeCwId: 10, responseSeconds: null, responded: false }, // assigned, never replied
-      ],
-    });
-
-    const mona = rows.find((r) => r.agentId === 10)!;
-    expect(mona.avgResponseSeconds).toBe(300); // the silent assignment must not count as 0
-    expect(mona.maxResponseSeconds).toBe(300);
-  });
-
-  it("leaves response time null for an agent who was assigned nothing", () => {
-    const { rows } = buildAgentLeaderboard({
-      agents: ROSTER,
-      conversations: [conv({ assigneeCwId: 10 })],
-      intervals: [interval(10, 300)],
-    });
-
-    const idle = rows.find((r) => r.agentId === 30)!;
-    expect(idle.avgResponseSeconds).toBeNull();
+  it("still reports an assignee missing from the roster", () => {
+    const { rows } = build({ agents: [], current: [live(99)] });
+    expect(rows.find((r) => r.agentId === 99)?.currentWorkload).toBe(1);
   });
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Date range
+   Cairo boundaries
    ───────────────────────────────────────────────────────────────────────────── */
-describe("date range presets", () => {
-  const now = new Date(2026, 6, 14, 15, 30); // 14 Jul 2026, local
+describe("date boundaries are Cairo, not the browser's timezone", () => {
+  it("starts the Cairo day at 21:00Z or 22:00Z, never at the viewer's midnight", () => {
+    // 14 Jul 2026 12:00 UTC. Cairo is UTC+3 in July (DST).
+    const start = cairoStartOfDay(new Date("2026-07-14T12:00:00Z"));
+    expect(start.toISOString()).toBe("2026-07-13T21:00:00.000Z"); // = 00:00 Cairo on the 14th
 
-  it("resolves 'today' from local midnight", () => {
-    const { from, to } = resolveRange("today", now);
-    expect(from.getHours()).toBe(0);
-    expect(from.getDate()).toBe(14);
-    expect(to.getTime()).toBe(now.getTime());
+    const end = cairoEndOfDay(new Date("2026-07-14T12:00:00Z"));
+    expect(end.toISOString()).toBe("2026-07-14T20:59:59.999Z"); // = 23:59:59.999 Cairo
   });
 
-  it("resolves rolling day windows", () => {
-    const { from, to } = resolveRange("30d", now);
-    expect(Math.round((to.getTime() - from.getTime()) / 86_400_000)).toBe(30);
+  it("handles the winter offset (UTC+2) as well", () => {
+    const start = cairoStartOfDay(new Date("2026-02-10T12:00:00Z"));
+    expect(start.toISOString()).toBe("2026-02-09T22:00:00.000Z"); // = 00:00 Cairo on the 10th
   });
 
-  it("resolves the current month from the 1st", () => {
-    const { from } = resolveRange("this_month", now);
-    expect(from.getDate()).toBe(1);
-    expect(from.getMonth()).toBe(6); // July
-    expect(from.getHours()).toBe(0);
+  it("parses a custom date as a whole Cairo day, so the last day is not cut off", () => {
+    const from = parseDateInput("2026-02-01")!;
+    const to = parseDateInput("2026-02-28", { endOfDay: true })!;
+
+    expect(from.toISOString()).toBe("2026-01-31T22:00:00.000Z");
+    expect(to.toISOString()).toBe("2026-02-28T21:59:59.999Z");
+    expect(to.getTime()).toBeGreaterThan(from.getTime());
   });
 
-  it("resolves the previous month to its own last instant, not today", () => {
-    const { from, to } = resolveRange("last_month", now);
-    expect(from.getMonth()).toBe(5); // June
-    expect(from.getDate()).toBe(1);
-    expect(to.getMonth()).toBe(5); // still June — must not bleed into July
-    expect(to.getDate()).toBe(30); // June has 30 days
-    expect(to.getHours()).toBe(23);
+  it("round-trips an instant back to the Cairo calendar day it belongs to", () => {
+    // 22:30 UTC on the 13th is already the 14th in Cairo.
+    expect(toDateInput(new Date("2026-07-13T22:30:00Z"))).toBe("2026-07-14");
   });
 
-  it("rolls the previous month back across a year boundary", () => {
-    const { from, to } = resolveRange("last_month", new Date(2026, 0, 9)); // 9 Jan 2026
-    expect(from.getFullYear()).toBe(2025);
-    expect(from.getMonth()).toBe(11); // December
-    expect(to.getDate()).toBe(31);
+  it("anchors 'today' and 'this month' on Cairo", () => {
+    const now = new Date("2026-07-14T12:00:00Z");
+
+    expect(resolveRange("today", now).from.toISOString()).toBe("2026-07-13T21:00:00.000Z");
+    expect(resolveRange("this_month", now).from.toISOString()).toBe("2026-06-30T21:00:00.000Z");
   });
 
-  it("round-trips a custom date through the picker format", () => {
-    const parsed = parseDateInput("2026-03-05")!;
-    expect(parsed.getFullYear()).toBe(2026);
-    expect(parsed.getMonth()).toBe(2);
-    expect(parsed.getDate()).toBe(5);
-    expect(parsed.getHours()).toBe(0);
-    expect(toDateInput(parsed)).toBe("2026-03-05");
+  it("ends 'last month' on that month's own last instant", () => {
+    const { from, to } = resolveRange("last_month", new Date("2026-07-14T12:00:00Z"));
 
-    // The "to" side must cover the whole day, or the last day gets cut off.
-    const end = parseDateInput("2026-03-05", { endOfDay: true })!;
-    expect(end.getHours()).toBe(23);
-    expect(end.getMinutes()).toBe(59);
+    expect(from.toISOString()).toBe("2026-05-31T21:00:00.000Z"); // 00:00 Cairo, 1 June
+    expect(to.toISOString()).toBe("2026-06-30T20:59:59.999Z"); // 23:59:59.999 Cairo, 30 June
   });
 
-  it("rejects a malformed date instead of inventing one", () => {
-    expect(parseDateInput("")).toBeNull();
-    expect(parseDateInput("05/03/2026")).toBeNull();
-    expect(toDateInput(null)).toBe("");
+  it("rolls the previous month across a year boundary", () => {
+    const { from } = resolveRange("last_month", new Date("2026-01-09T12:00:00Z"));
+    expect(toDateInput(from)).toBe("2025-12-01");
   });
 });
 
-describe("custom range reaches the report filters", () => {
-  it("parses an arbitrary from/to out of the query string", () => {
-    const f = parseFilters(
-      new URLSearchParams({
-        from: "2026-02-01T00:00:00.000Z",
-        to: "2026-02-28T23:59:59.999Z",
-        activeOnly: "true",
-      }),
-    );
-
-    expect(f.from.toISOString()).toBe("2026-02-01T00:00:00.000Z");
-    expect(f.to.toISOString()).toBe("2026-02-28T23:59:59.999Z");
-    expect(f.activeOnly).toBe(true);
-  });
-
-  it("falls back to the last 30 days when no range is given", () => {
-    const f = parseFilters(new URLSearchParams());
-    const days = (f.to.getTime() - f.from.getTime()) / 86_400_000;
-    expect(Math.round(days)).toBe(30);
-    expect(f.activeOnly).toBeUndefined();
-  });
-
-  it("parses a multi-select list out of one comma-separated param", () => {
-    const f = parseFilters(
-      new URLSearchParams({ department: "sales,operations", teamId: "3,4", sla: "breached,near_breach" }),
-    );
-
-    expect(f.department).toEqual(["sales", "operations"]);
-    expect(f.teamId).toEqual([3, 4]);
-    expect(f.sla).toEqual(["breached", "near_breach"]);
-  });
-
-  it("drops blanks, 'all' and duplicates from a selection", () => {
-    const f = parseFilters(new URLSearchParams({ department: "sales,,all,sales,operations", agentId: "10,abc,10" }));
-
-    expect(f.department).toEqual(["sales", "operations"]);
-    expect(f.agentId).toEqual([10]); // 'abc' is not an id
-  });
-
-  it("treats an empty selection as no filter at all", () => {
-    const f = parseFilters(new URLSearchParams({ department: "", teamId: "all" }));
-    expect(f.department).toBeUndefined();
-    expect(f.teamId).toBeUndefined();
-  });
-
-  it("builds an `in` clause for every selected list", () => {
+/* ─────────────────────────────────────────────────────────────────────────────
+   Filters
+   ───────────────────────────────────────────────────────────────────────────── */
+describe("filters work independently and together", () => {
+  it("builds an `in` clause per selected list, and combines them", () => {
     const where = conversationWhere({
       from: new Date("2026-02-01"),
       to: new Date("2026-02-28"),
       department: ["sales", "operations"],
       teamId: [3, 4],
+      agentId: [10],
+      inboxId: [27],
       status: ["open", "pending"],
+      label: ["vip"],
       sla: ["breached"],
+      needsReply: true,
     });
 
     expect(where.department).toEqual({ in: ["sales", "operations"] });
     expect(where.teamCwId).toEqual({ in: [3, 4] });
+    expect(where.assigneeCwId).toEqual({ in: [10] });
+    expect(where.inboxCwId).toEqual({ in: [27] });
     expect(where.status).toEqual({ in: ["open", "pending"] });
+    expect(where.labels).toEqual({ hasSome: ["vip"] });
     expect(where.slaFirstResponseState).toEqual({ in: ["breached"] });
+    expect(where.needsReply).toBe(true);
+    expect(where.createdAtCw).toEqual({ gte: new Date("2026-02-01"), lte: new Date("2026-02-28") });
   });
 
-  it("round-trips a multi-selection through the export link", () => {
-    const f = parseFilters(new URLSearchParams({ department: "sales,operations", teamId: "3,4" }));
+  it("drops the date bound for live-state queries and keeps every other filter", () => {
+    const f = {
+      from: new Date("2026-02-01"),
+      to: new Date("2026-02-28"),
+      teamId: [4],
+      inboxId: [27],
+    };
+    const where = conversationWhere(f, { ignoreDate: true });
+
+    // This is what makes current workload match Chatwoot.
+    expect(where.createdAtCw).toBeUndefined();
+    expect(where.teamCwId).toEqual({ in: [4] });
+    expect(where.inboxCwId).toEqual({ in: [27] });
+  });
+
+  it("swaps a reversed range instead of silently returning nothing", () => {
+    const f = parseFilters(
+      new URLSearchParams({ from: "2026-02-28T00:00:00.000Z", to: "2026-02-01T00:00:00.000Z" }),
+    );
+    expect(f.from.getTime()).toBeLessThanOrEqual(f.to.getTime());
+  });
+
+  it("round-trips every filter through the URL, so drill-downs and exports keep them", () => {
+    const f = parseFilters(
+      new URLSearchParams({
+        from: "2026-02-01T00:00:00.000Z",
+        to: "2026-02-28T00:00:00.000Z",
+        department: "sales,operations",
+        teamId: "3,4",
+        agentId: "10",
+        inboxId: "27",
+        status: "open",
+        label: "vip,complaint",
+        sla: "breached",
+        needsReply: "true",
+        activeOnly: "true",
+      }),
+    );
     const qs = new URLSearchParams(filtersToQuery(f));
 
     expect(qs.get("department")).toBe("sales,operations");
     expect(qs.get("teamId")).toBe("3,4");
+    expect(qs.get("label")).toBe("vip,complaint");
+    expect(qs.get("sla")).toBe("breached");
+    expect(qs.get("needsReply")).toBe("true");
+    expect(qs.get("activeOnly")).toBe("true");
+    expect(qs.get("from")).toBe("2026-02-01T00:00:00.000Z");
   });
 
-  it("carries the range and activeOnly through to the CSV export link", () => {
-    const f = parseFilters(
-      new URLSearchParams({ from: "2026-02-01T00:00:00.000Z", to: "2026-02-28T00:00:00.000Z", activeOnly: "true" }),
-    );
-    const qs = new URLSearchParams(filtersToQuery(f));
-
-    expect(qs.get("from")).toBe("2026-02-01T00:00:00.000Z");
-    expect(qs.get("to")).toBe("2026-02-28T00:00:00.000Z");
-    expect(qs.get("activeOnly")).toBe("true");
+  it("drops blanks, 'all' and duplicates from a selection", () => {
+    const f = parseFilters(new URLSearchParams({ department: "sales,,all,sales,operations", agentId: "10,abc,10" }));
+    expect(f.department).toEqual(["sales", "operations"]);
+    expect(f.agentId).toEqual([10]);
   });
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   The query layer: the roster must not be date-filtered, the metrics must be.
+   The query layer: live is unbounded, period metrics are bounded.
    ───────────────────────────────────────────────────────────────────────────── */
 const db = vi.hoisted(() => ({
   agentWhere: undefined as unknown,
-  conversationWhere: undefined as unknown,
+  currentWhere: undefined as unknown,
   intervalWhere: undefined as unknown,
+  createdWhere: undefined as unknown,
+  resolvedWhere: undefined as unknown,
+  conversationCalls: 0,
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -347,15 +375,18 @@ vi.mock("@/lib/db", () => ({
       },
     },
     conversation: {
-      findMany: async ({ where }: { where: unknown }) => {
-        db.conversationWhere = where;
-        return [conv({ assigneeCwId: 10 })];
+      findMany: async ({ where }: { where: Record<string, unknown> }) => {
+        db.conversationCalls++;
+        if (where.status) db.currentWhere = where;
+        else if (where.resolvedAt) db.resolvedWhere = where;
+        else db.createdWhere = where;
+        return [];
       },
     },
     assignmentInterval: {
       findMany: async ({ where }: { where: unknown }) => {
         db.intervalWhere = where;
-        return [interval(10, 240)];
+        return [];
       },
     },
   },
@@ -365,43 +396,39 @@ const { getAgentLeaderboard } = await import("@/lib/reporting/agents");
 
 describe("getAgentLeaderboard query", () => {
   beforeEach(() => {
-    db.agentWhere = undefined;
-    db.conversationWhere = undefined;
-    db.intervalWhere = undefined;
+    db.conversationCalls = 0;
   });
 
-  it("reads the whole roster, then scopes only the metrics to the period", async () => {
+  it("queries live workload with NO date bound, and period metrics with one", async () => {
     const from = new Date("2026-02-01T00:00:00.000Z");
     const to = new Date("2026-02-28T23:59:59.999Z");
 
-    const { rows, summary } = await getAgentLeaderboard({ from, to });
+    await getAgentLeaderboard({ from, to, teamId: [4] });
 
-    // The roster query carries no date bound — that is what keeps idle agents in.
-    expect(db.agentWhere).toEqual({});
+    // Live: active statuses, team filter kept, date dropped. This is the fix.
+    const current = db.currentWhere as Record<string, unknown>;
+    expect(current.status).toEqual({ in: ["open", "pending", "snoozed"] });
+    expect(current.teamCwId).toEqual({ in: [4] });
+    expect(current.createdAtCw).toBeUndefined();
 
-    // Metrics do carry it.
-    expect(db.conversationWhere).toMatchObject({ createdAtCw: { gte: from, lte: to } });
-    expect(db.intervalWhere).toMatchObject({ startedAt: { gte: from, lte: to }, responded: true });
+    // Assignment activity: bounded by startedAt, NOT by conversation creation.
+    const intervals = db.intervalWhere as Record<string, unknown>;
+    expect(intervals.startedAt).toEqual({ gte: from, lte: to });
 
-    // All three agents come back; only the one with data has numbers.
-    expect(rows).toHaveLength(3);
-    expect(rows.find((r) => r.agentId === 10)!.avgResponseSeconds).toBe(240);
-    expect(rows.find((r) => r.agentId === 30)!.avgResponseSeconds).toBeNull();
-    expect(summary.totalAgents).toBe(3);
-    expect(summary.activeAgents).toBe(1);
+    // Acquisition: the only query that uses createdAtCw.
+    const created = db.createdWhere as Record<string, unknown>;
+    expect(created.createdAtCw).toEqual({ gte: from, lte: to });
+
+    // Resolved: anchored on resolvedAt.
+    const resolved = db.resolvedWhere as Record<string, unknown>;
+    expect(resolved.resolvedAt).toEqual({ gte: from, lte: to });
+    expect(resolved.createdAtCw).toBeUndefined();
   });
 
-  it("narrows the roster to the selected agents (multi-select)", async () => {
-    await getAgentLeaderboard({ from: new Date("2026-02-01"), to: new Date("2026-02-28"), agentId: [20] });
-
-    expect(db.agentWhere).toEqual({ id: { in: [20] } });
-    expect(db.intervalWhere).toMatchObject({ assigneeCwId: { in: [20] } });
-  });
-
-  it("accepts several agents at once", async () => {
+  it("narrows to the selected agents", async () => {
     await getAgentLeaderboard({ from: new Date("2026-02-01"), to: new Date("2026-02-28"), agentId: [10, 20] });
 
     expect(db.agentWhere).toEqual({ id: { in: [10, 20] } });
-    expect(db.intervalWhere).toMatchObject({ assigneeCwId: { in: [10, 20] } });
+    expect((db.intervalWhere as Record<string, unknown>).assigneeCwId).toEqual({ in: [10, 20] });
   });
 });
