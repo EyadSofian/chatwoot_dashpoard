@@ -53,7 +53,14 @@ export async function getSlaSettings(): Promise<SlaSettings> {
   }
 }
 
-export async function saveSlaSettings(patch: Partial<SlaSettings>): Promise<SlaSettings> {
+export interface SlaSettingsPatch {
+  firstResponseMinutes?: number;
+  resolutionHours?: number;
+  nearBreachRatio?: number;
+  businessHours?: Partial<SlaSettings["businessHours"]>;
+}
+
+export async function saveSlaSettings(patch: SlaSettingsPatch): Promise<SlaSettings> {
   const current = await getSlaSettings();
   const merged: SlaSettings = {
     firstResponseMinutes: patch.firstResponseMinutes ?? current.firstResponseMinutes,

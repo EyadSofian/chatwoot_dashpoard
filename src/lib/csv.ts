@@ -13,7 +13,7 @@ function escapeCell(value: unknown): string {
 /**
  * Build a CSV string with a UTF-8 BOM so Excel renders Arabic correctly.
  */
-export function toCsv<T extends Record<string, unknown>>(rows: T[], columns: CsvColumn<T>[]): string {
+export function toCsv<T>(rows: T[], columns: CsvColumn<T>[]): string {
   const header = columns.map((c) => escapeCell(c.label)).join(",");
   const body = rows.map((row) =>
     columns
