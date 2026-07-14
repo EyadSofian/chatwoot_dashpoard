@@ -1,0 +1,428 @@
+// Engosoft Chatwoot Analytics — data model.
+//
+// Design goals:
+//  - Raw events are stored verbatim so every metric can be recomputed later.
+//  - Normalized tables are idempotent: duplicate webhooks/backfills upsert on
+//    stable natural keys (chatwootId, dedupeKey) and never double-count.
+//  - Heavy read paths (Overview, Conversations table) read denormalized metric
+//    columns on `conversations`, filled by the metrics engine — no need to load
+//    all messages on every request.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Raw ingestion ──────────────────────────────
+
+/// Every inbound webhook + every backfilled entity page is stored raw.
+model RawEvent {
+  id          BigInt   @id @default(autoincrement())
+  source      String // "chatwoot_webhook" | "chatwoot_backfill" | "campaign_app"
+  event       String? // e.g. message_created, conversation_status_changed
+  dedupeKey   String   @unique // stable hash so duplicate deliveries are idempotent
+  signatureOk Boolean  @default(false)
+  conversationCwId Int?
+  messageCwId      Int?
+  occurredAt  DateTime?
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+  processError String?
+  payload     Json
+
+  @@index([source, event])
+  @@index([conversationCwId])
+  @@index([receivedAt])
+  @@map("raw_events")
+}
+
+// ─────────────────────────────── Entities ───────────────────────────────────
+
+model Agent {
+  id          Int      @id // chatwoot user id
+  name        String?
+  email       String?
+  role        String?
+  availability String?
+  thumbnail   String?
+  confirmed   Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  @@map("agents")
+}
+
+model Team {
+  id         Int      @id // chatwoot team id
+  name       String?
+  department String? // derived: sales | operations | complaints | unknown
+  updatedAt  DateTime @updatedAt
+
+  @@map("teams")
+}
+
+model Inbox {
+  id          Int      @id // chatwoot inbox id
+  name        String?
+  channelType String?
+  department  String? // optional inbox→department hint
+  updatedAt   DateTime @updatedAt
+
+  @@map("inboxes")
+}
+
+model Contact {
+  id         Int      @id // chatwoot contact id
+  name       String?
+  phone      String?
+  email      String?
+  identifier String?
+  updatedAt  DateTime @updatedAt
+
+  @@index([phone])
+  @@map("contacts")
+}
+
+// ─────────────────────────────── Conversations ──────────────────────────────
+
+model Conversation {
+  id          BigInt @id @default(autoincrement())
+  chatwootId  Int    @unique // conversation id
+  displayId   Int?
+  accountId   Int?
+
+  // Foreign chatwoot ids (kept scalar; entities upserted as stubs on ingest)
+  inboxCwId    Int?
+  inboxName    String?
+  teamCwId     Int?
+  teamName     String?
+  assigneeCwId Int?
+  assigneeName String?
+  contactCwId  Int?
+  contactName  String?
+  contactPhone String?
+
+  // Lifecycle / status
+  status            String? // open | pending | resolved | snoozed
+  unreadCount       Int      @default(0)
+  labels            String[] @default([])
+  department        String? // sales | operations | complaints | unknown
+
+  createdAtCw       DateTime? // conversation created
+  firstOpenedAt     DateTime?
+  lastMessageAt     DateTime?
+  lastMessageType   String? // incoming | outgoing | activity | template
+  lastActivityAt    DateTime?
+  resolvedAt        DateTime?
+  snoozedUntil      DateTime?
+
+  // Reply metrics (computed by the metrics engine)
+  assignedAt          DateTime? // first human assignment
+  firstHumanReplyAt   DateTime? // first public human reply after assignment
+  responseSeconds     Int? // assignment → first human reply
+  needsReply          Boolean   @default(false)
+  handledByHuman      Boolean   @default(false)
+
+  // Duration metrics (sum across lifecycle segments)
+  conversationDurationSeconds     Int?
+  conversationBusinessSeconds     Int?
+
+  // Campaign correlation
+  campaignLabel        String?
+  campaignSource       String? // sales | operations
+  campaignTemplate     String?
+  campaignStatus       String?
+  campaignCreatedAt    DateTime?
+  isCampaign           Boolean  @default(false)
+
+  // Bot (Fahd) involvement
+  botInvolved          Boolean  @default(false)
+  botReleaseAt         DateTime?
+
+  // SLA (computed)
+  slaFirstResponseState String? // healthy | near_breach | breached
+  slaResolutionState    String?
+  slaFirstResponseBreached Boolean @default(false)
+  slaResolutionBreached    Boolean @default(false)
+
+  customAttributes Json?
+  ingestedAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  messages            Message[]
+  events              ConversationEvent[]
+  assignmentIntervals AssignmentInterval[]
+  resolutionIntervals ResolutionInterval[]
+  responseMetrics     ResponseMetric[]
+  campaignReplies     CampaignReply[]
+  botHandoffs         BotHandoff[]
+
+  @@index([status])
+  @@index([department])
+  @@index([assigneeCwId])
+  @@index([teamCwId])
+  @@index([inboxCwId])
+  @@index([lastMessageAt])
+  @@index([createdAtCw])
+  @@index([isCampaign])
+  @@index([needsReply])
+  @@index([campaignLabel])
+  @@map("conversations")
+}
+
+model Message {
+  id             BigInt   @id @default(autoincrement())
+  chatwootId     Int      @unique
+  conversationId BigInt
+  conversationCwId Int
+
+  messageType    Int? // 0 incoming, 1 outgoing, 2 activity, 3 template
+  contentType    String?
+  private        Boolean  @default(false)
+  content        String?
+  senderType     String? // user | contact | agent_bot | ...
+  senderId       Int?
+  senderName     String?
+
+  isTemplate     Boolean  @default(false) // WhatsApp campaign template
+  isBot          Boolean  @default(false) // Fahd/Botpress or agent_bot
+  isHumanReply   Boolean  @default(false) // public outgoing human reply
+
+  createdAtCw    DateTime?
+  ingestedAt     DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAtCw])
+  @@index([conversationCwId])
+  @@index([messageType])
+  @@map("messages")
+}
+
+/// Normalized lifecycle event (assignment, status change, resolve, reopen…).
+model ConversationEvent {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  conversationCwId Int
+  type           String // assigned | unassigned | status_changed | resolved | reopened | team_changed | created
+  dedupeKey      String   @unique
+  fromValue      String?
+  toValue        String?
+  actorType      String?
+  actorId        Int?
+  occurredAt     DateTime
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, occurredAt])
+  @@index([type])
+  @@map("conversation_events")
+}
+
+/// One interval per human-agent assignment. Reassignment opens a new interval.
+model AssignmentInterval {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  conversationCwId Int
+  assigneeCwId   Int
+  assigneeName   String?
+  startedAt      DateTime // when assigned
+  endedAt        DateTime? // when reassigned/unassigned/resolved
+  firstReplyAt   DateTime? // first public human reply by this assignee after start
+  responseSeconds Int?
+  responded      Boolean  @default(false)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationCwId, assigneeCwId, startedAt])
+  @@index([assigneeCwId, startedAt])
+  @@map("assignment_intervals")
+}
+
+/// First-response metric per conversation (denormalized for agent reports).
+model ResponseMetric {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  conversationCwId Int    @unique
+  assigneeCwId   Int?
+  assignedAt     DateTime?
+  firstReplyAt   DateTime?
+  responseSeconds Int?
+  businessSeconds Int?
+  breachedSla    Boolean  @default(false)
+  computedAt     DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([assigneeCwId])
+  @@map("response_metrics")
+}
+
+/// One row per open→resolved lifecycle segment (reopen creates a new segment).
+model ResolutionInterval {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  conversationCwId Int
+  segmentIndex   Int
+  openedAt       DateTime
+  resolvedAt     DateTime?
+  durationSeconds Int?
+  businessSeconds Int?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationCwId, segmentIndex])
+  @@index([resolvedAt])
+  @@map("resolution_intervals")
+}
+
+// ─────────────────────────────── Campaigns ──────────────────────────────────
+
+model CampaignSource {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique // sales | operations
+  name      String
+  baseUrl   String?
+  updatedAt DateTime @updatedAt
+
+  jobs CampaignJob[]
+
+  @@map("campaign_sources")
+}
+
+model CampaignJob {
+  id                 BigInt   @id @default(autoincrement())
+  sourceId           Int
+  sourceKey          String // sales | operations
+  jobId              String // uploader job uuid
+  type               String? // send | upload
+  status             String?
+  statusBucket       String? // running | pending | completed | failed | stopped
+  operatorName       String?
+  queueLabel         String?
+  labelName          String?
+  originalLabelName  String?
+  templateName       String?
+  inboxCwId          Int?
+  inboxName          String?
+  total              Int      @default(0)
+  processed          Int      @default(0)
+  sent               Int      @default(0)
+  failed             Int      @default(0)
+  skipped            Int      @default(0)
+  errors             Int      @default(0)
+  failedRecordsCount Int      @default(0)
+  sentTrackCount     Int      @default(0)
+  deliveryFailuresCount Int   @default(0)
+  createdAtApp       DateTime?
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  active             Boolean  @default(false)
+  lastError          String?
+  raw                Json?
+  syncedAt           DateTime @default(now())
+
+  source     CampaignSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  recipients CampaignRecipient[]
+
+  @@unique([sourceKey, jobId])
+  @@index([sourceKey, createdAtApp])
+  @@index([labelName])
+  @@index([operatorName])
+  @@map("campaign_jobs")
+}
+
+model CampaignRecipient {
+  id             BigInt   @id @default(autoincrement())
+  campaignJobId  BigInt
+  sourceKey      String
+  jobId          String
+  phone          String?
+  name           String?
+  status         String? // sent | failed | skipped
+  conversationCwId Int?
+  messageCwId    Int?
+  errorCode      String?
+  errorDescription String?
+
+  job CampaignJob @relation(fields: [campaignJobId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignJobId, phone])
+  @@index([conversationCwId])
+  @@index([sourceKey, jobId])
+  @@map("campaign_recipients")
+}
+
+/// A customer reply on a campaign conversation + the agent response time.
+model CampaignReply {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  conversationCwId Int
+  campaignLabel  String
+  campaignSource String? // sales | operations
+  template       String?
+  replyAt        DateTime? // first customer reply after send
+  firstAgentReplyAt DateTime?
+  responseSeconds Int?
+  assigned       Boolean  @default(false)
+  assigneeCwId   Int?
+  assigneeName   String?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationCwId, campaignLabel])
+  @@index([campaignSource])
+  @@index([campaignLabel])
+  @@map("campaign_replies")
+}
+
+// ─────────────────────────────── Fahd / Bot ─────────────────────────────────
+
+model BotHandoff {
+  id             BigInt   @id @default(autoincrement())
+  conversationId BigInt
+  conversationCwId Int
+  dedupeKey      String   @unique
+  handoffAt      DateTime
+  reentry        Boolean  @default(false) // resolved re-entry that went to Fahd
+  department     String? // routed department
+  routedTeamCwId Int?
+  queuedUnassigned Boolean @default(false)
+  gotAgentReply  Boolean  @default(false)
+  firstAgentReplyAt DateTime?
+  handoffToReplySeconds Int?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([department])
+  @@index([handoffAt])
+  @@map("bot_handoffs")
+}
+
+// ─────────────────────────────── Ops / settings ─────────────────────────────
+
+model SyncRun {
+  id         BigInt   @id @default(autoincrement())
+  type       String // backfill | campaign_sync | recompute
+  status     String   @default("running") // running | success | error | partial
+  params     Json?
+  stats      Json?
+  error      String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([type, startedAt])
+  @@map("sync_runs")
+}
+
+/// Key/value app settings (SLA thresholds, business hours overrides…).
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}
