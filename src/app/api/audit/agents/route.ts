@@ -21,7 +21,11 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const filters = parseFilters(url.searchParams);
-  const maxPages = Number(url.searchParams.get("maxPages") ?? 40) || 40;
+  // Default: scan completely (fetchLiveWorkload pages until Chatwoot's own total
+  // is reached). Only pass a bound if one is explicitly given — as a safety
+  // override, not a truncation.
+  const raw = url.searchParams.get("maxPages");
+  const maxPages = raw ? Number(raw) || undefined : undefined;
 
   try {
     return NextResponse.json(await auditAgents(filters, { maxPages }));

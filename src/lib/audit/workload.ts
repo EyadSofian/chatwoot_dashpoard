@@ -84,31 +84,48 @@ export interface AgentsAuditResult {
   freshness: AuditFreshness;
 }
 
+/** Chatwoot returns the true total for a status query in `meta.all_count`. */
+function allCount(res: unknown): number | null {
+  const r = res as { data?: { meta?: Record<string, unknown> }; meta?: Record<string, unknown> };
+  const raw = r?.data?.meta?.all_count ?? r?.meta?.all_count;
+  return typeof raw === "number" ? raw : null;
+}
+
 /**
- * Page the account's conversations for the active statuses and read the assignee
- * off each returned object.
+ * Page the account's active conversations COMPLETELY and read the assignee off
+ * each returned object.
+ *
+ * Correctness depends on scanning everything: a truncated snapshot under-counts
+ * Chatwoot's side, which inflates every "dashboard has more than Chatwoot"
+ * difference and makes the audit itself untrustworthy. So there is no low page
+ * cap — we page each status until we have collected its `meta.all_count`, or a
+ * page comes back short/empty. `maxPages` is only a runaway safety bound
+ * (default 4000 pages ≈ 100k conversations); hitting it is a real anomaly and is
+ * the ONLY thing that sets `truncated`.
  *
  * We deliberately do NOT pass `assignee_id`: it is not part of the documented
  * conversation-list contract, and a filter that silently does nothing would make
- * this audit lie in exactly the direction it exists to catch. We paginate and
- * filter on the assignee metadata Chatwoot actually returns.
+ * this audit lie in exactly the direction it exists to catch.
  */
 export async function fetchLiveWorkload(
   client: ChatwootClient,
   opts: { maxPages?: number } = {},
 ): Promise<{ conversations: LiveConversation[]; pages: number; truncated: boolean }> {
-  const maxPages = Math.max(1, Math.min(opts.maxPages ?? 40, 200));
+  const safetyCap = Math.max(1, opts.maxPages ?? 4000);
   const byId = new Map<number, LiveConversation>();
 
   let pagesWalked = 0;
   let truncated = false;
 
   for (const status of ACTIVE_STATUSES) {
-    let page = 1;
-    for (; page <= maxPages; page++) {
+    let collected = 0;
+    let total: number | null = null;
+
+    for (let page = 1; page <= safetyCap; page++) {
       const res = await client.listConversations({ status, page, sort_order: "desc" });
       const batch = (res?.data?.payload ?? getPayload<CwConversation>(res)) as CwConversation[];
       pagesWalked++;
+      if (page === 1) total = allCount(res);
       if (!batch.length) break;
 
       for (const c of batch) {
@@ -121,9 +138,13 @@ export async function fetchLiveWorkload(
           assigneeName: assignee?.name ?? assignee?.available_name ?? null,
         });
       }
+      collected += batch.length;
 
-      if (batch.length < 25) break; // last page for this status
-      if (page === maxPages) truncated = true;
+      // Done when Chatwoot's own total says so, or the page came back short.
+      if (total !== null && collected >= total) break;
+      if (total === null && batch.length < 20) break; // no count available → short-page heuristic
+
+      if (page === safetyCap) truncated = true; // ran into the runaway bound
     }
   }
 
@@ -438,6 +459,10 @@ export interface ReconcileStats {
   mismatched: number;
   reIngested: number;
   failed: number;
+  /** Mismatches left unfixed because the per-run fetch cap was hit. 0 = fully reconciled. */
+  remaining: number;
+  /** The live snapshot ran into its runaway safety bound — numbers may be partial. */
+  snapshotTruncated: boolean;
   errors: string[];
 }
 
@@ -449,7 +474,9 @@ export interface ReconcileStats {
  * this twice cannot double anything.
  */
 export async function reconcileCurrentWorkload(opts: { maxPages?: number; maxFetch?: number } = {}): Promise<ReconcileStats> {
-  const maxFetch = Math.max(1, Math.min(opts.maxFetch ?? 500, 5000));
+  // Default high enough to clear a normal mismatch set in one pass. If it is ever
+  // hit, `remaining` says so and re-running finishes the job (it is idempotent).
+  const maxFetch = Math.max(1, Math.min(opts.maxFetch ?? 5000, 20000));
   const client = new ChatwootClient();
 
   const live = await fetchLiveWorkload(client, opts);
@@ -488,6 +515,8 @@ export async function reconcileCurrentWorkload(opts: { maxPages?: number; maxFet
     mismatched: suspect.size,
     reIngested: 0,
     failed: 0,
+    remaining: 0,
+    snapshotTruncated: live.truncated,
     errors: [],
   };
 
@@ -495,7 +524,11 @@ export async function reconcileCurrentWorkload(opts: { maxPages?: number; maxFet
   let fetched = 0;
 
   for (const id of suspect) {
-    if (fetched >= maxFetch) break;
+    if (fetched >= maxFetch) {
+      // Don't silently stop — say how many are left so a re-run finishes them.
+      stats.remaining = suspect.size - fetched;
+      break;
+    }
     fetched++;
     try {
       const [detail, messages] = await Promise.all([

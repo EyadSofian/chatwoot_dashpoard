@@ -25,7 +25,9 @@ export async function GET(request: Request, ctx: { params: Promise<{ agentId: st
 
   const url = new URL(request.url);
   const filters = parseFilters(url.searchParams);
-  const maxPages = Number(url.searchParams.get("maxPages") ?? 40) || 40;
+  // Complete scan by default; explicit maxPages is only a safety override.
+  const raw = url.searchParams.get("maxPages");
+  const maxPages = raw ? Number(raw) || undefined : undefined;
 
   try {
     return NextResponse.json(await auditAgentDetail(id, filters, { maxPages }));

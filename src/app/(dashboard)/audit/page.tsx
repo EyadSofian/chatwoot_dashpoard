@@ -110,13 +110,18 @@ export default function AuditPage() {
     setReconciling(true);
     setReconcileResult(null);
     try {
-      const res = await apiPost<{ stats: { mismatched: number; reIngested: number; failed: number } }>(
-        "/api/audit/reconcile-current-workload",
-        {},
-      );
-      setReconcileResult(
-        `${tr("تمت إعادة استيراد", "Re-ingested")} ${formatNumber(res.stats.reIngested)} / ${formatNumber(res.stats.mismatched)} ${tr("غير مطابِقة", "mismatched")}${res.stats.failed ? ` · ${tr("فشل", "failed")} ${formatNumber(res.stats.failed)}` : ""}`,
-      );
+      const res = await apiPost<{
+        stats: { mismatched: number; reIngested: number; failed: number; remaining: number };
+      }>("/api/audit/reconcile-current-workload", {});
+      const st = res.stats;
+      const parts = [
+        `${tr("تمت إعادة استيراد", "Re-ingested")} ${formatNumber(st.reIngested)} / ${formatNumber(st.mismatched)} ${tr("غير مطابِقة", "mismatched")}`,
+      ];
+      if (st.failed) parts.push(`${tr("فشل", "failed")} ${formatNumber(st.failed)}`);
+      // Honest about a partial pass — re-running finishes it (it is idempotent).
+      if (st.remaining) parts.push(`${tr("متبقٍ", "remaining")} ${formatNumber(st.remaining)} — ${tr("أعد التشغيل لإكمالها", "run again to finish")}`);
+      else if (!st.failed) parts.push(tr("مطابَقة كاملة ✓", "fully reconciled ✓"));
+      setReconcileResult(parts.join(" · "));
       reload();
     } catch (err) {
       setReconcileResult((err as Error).message);
