@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cairo } from "next/font/google";
 import "./globals.css";
+import { LocaleProvider } from "@/lib/i18n";
 
 const cairo = Cairo({
   subsets: ["arabic", "latin"],
@@ -24,9 +25,14 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Default to Arabic/RTL on the server; LocaleProvider flips <html dir/lang> on
+  // the client if the visitor previously chose English. suppressHydrationWarning
+  // keeps React from complaining about that intentional attribute swap.
   return (
-    <html lang="ar" dir="rtl" className={cairo.variable}>
-      <body className="min-h-dvh bg-background font-sans text-foreground antialiased">{children}</body>
+    <html lang="ar" dir="rtl" className={cairo.variable} suppressHydrationWarning>
+      <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
+        <LocaleProvider>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }

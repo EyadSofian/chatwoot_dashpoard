@@ -115,10 +115,10 @@ export type NavKey = (typeof NAV_ITEMS)[number]["key"];
  * Sidebar sections. Grouping keeps a ten-item menu scannable: you look for the
  * kind of question you have, not the page name you half-remember.
  */
-export const NAV_GROUPS: { titleAr: string; keys: NavKey[] }[] = [
-  { titleAr: "التحليلات", keys: ["overview", "agents", "teams", "departments", "conversations", "campaigns", "labels"] },
-  { titleAr: "التشغيل", keys: ["sla", "fahd", "exports"] },
-  { titleAr: "النظام", keys: ["audit", "settings"] },
+export const NAV_GROUPS: { titleAr: string; titleEn: string; keys: NavKey[] }[] = [
+  { titleAr: "التحليلات", titleEn: "Analytics", keys: ["overview", "agents", "teams", "departments", "conversations", "campaigns", "labels"] },
+  { titleAr: "التشغيل", titleEn: "Operations", keys: ["sla", "fahd", "exports"] },
+  { titleAr: "النظام", titleEn: "System", keys: ["audit", "settings"] },
 ];
 
 export const SESSION_COOKIE = "engosoft_analytics_session";

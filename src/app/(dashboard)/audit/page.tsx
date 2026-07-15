@@ -18,6 +18,7 @@ import {
 } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { formatDateTime, formatNumber } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 interface AuditResult {
   rows: AgentAuditRow[];
@@ -64,6 +65,7 @@ function Bucket({
   tone: "danger" | "warning" | "success";
   entries: AuditEntry[];
 }) {
+  const { tr } = useLocale();
   return (
     <div className="rounded-card border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -71,7 +73,7 @@ function Bucket({
         <Badge tone={tone}>{formatNumber(entries.length)}</Badge>
       </div>
       {entries.length === 0 ? (
-        <p className="p-4 text-xs text-muted-foreground">لا توجد عناصر.</p>
+        <p className="p-4 text-xs text-muted-foreground">{tr("لا توجد عناصر.", "No items.")}</p>
       ) : (
         <ul className="divide-y divide-border">
           {entries.slice(0, 60).map((e) => (
@@ -92,6 +94,7 @@ function Bucket({
 }
 
 export default function AuditPage() {
+  const { tr } = useLocale();
   const { data, loading, error, reload } = useApiData<AuditResult>("/api/audit/agents");
   const [selected, setSelected] = useState<number | null>(null);
   const [reconciling, setReconciling] = useState(false);
@@ -112,7 +115,7 @@ export default function AuditPage() {
         {},
       );
       setReconcileResult(
-        `تمت إعادة استيراد ${formatNumber(res.stats.reIngested)} محادثة من أصل ${formatNumber(res.stats.mismatched)} غير مطابِقة${res.stats.failed ? ` · فشل ${formatNumber(res.stats.failed)}` : ""}`,
+        `${tr("تمت إعادة استيراد", "Re-ingested")} ${formatNumber(res.stats.reIngested)} / ${formatNumber(res.stats.mismatched)} ${tr("غير مطابِقة", "mismatched")}${res.stats.failed ? ` · ${tr("فشل", "failed")} ${formatNumber(res.stats.failed)}` : ""}`,
       );
       reload();
     } catch (err) {
@@ -123,10 +126,10 @@ export default function AuditPage() {
   };
 
   const columns: Column<AgentAuditRow>[] = [
-    { key: "name", header: "الموظف", render: (r) => <span className="font-semibold">{r.name}</span> },
+    { key: "name", header: tr("الموظف", "Agent"), render: (r) => <span className="font-semibold">{r.name}</span> },
     {
       key: "chatwootActive",
-      header: "Chatwoot (نشط)",
+      header: tr("Chatwoot (نشط)", "Chatwoot (active)"),
       align: "end",
       render: (r) => (
         <div className="tnum">
@@ -139,7 +142,7 @@ export default function AuditPage() {
     },
     {
       key: "dashboardActive",
-      header: "الداشبورد (نشط)",
+      header: tr("الداشبورد (نشط)", "Dashboard (active)"),
       align: "end",
       render: (r) => (
         <div className="tnum">
@@ -152,21 +155,21 @@ export default function AuditPage() {
     },
     {
       key: "difference",
-      header: "الفرق",
+      header: tr("الفرق", "Difference"),
       align: "end",
       render: (r) =>
         r.difference === 0 ? (
-          <Badge tone="success">مطابِق</Badge>
+          <Badge tone="success">{tr("مطابِق", "Match")}</Badge>
         ) : (
           <Badge tone="danger">{r.difference > 0 ? `+${r.difference}` : r.difference}</Badge>
         ),
     },
-    { key: "assignedInPeriod", header: "أُسندت في الفترة", align: "end", render: (r) => <span className="tnum">{formatNumber(r.assignedInPeriod)}</span> },
-    { key: "assignmentEvents", header: "أحداث الإسناد", align: "end", render: (r) => <span className="tnum">{formatNumber(r.assignmentEvents)}</span> },
-    { key: "firstResponsesInPeriod", header: "ردود أولى", align: "end", render: (r) => <span className="tnum">{formatNumber(r.firstResponsesInPeriod)}</span> },
-    { key: "createdInPeriod", header: "أُنشئت في الفترة", align: "end", render: (r) => <span className="tnum">{formatNumber(r.createdInPeriod)}</span> },
-    { key: "resolvedInPeriod", header: "أُغلقت في الفترة", align: "end", render: (r) => <span className="tnum">{formatNumber(r.resolvedInPeriod)}</span> },
-    { key: "needsReplyNow", header: "تحتاج رد الآن", align: "end", render: (r) => <span className="tnum">{formatNumber(r.needsReplyNow)}</span> },
+    { key: "assignedInPeriod", header: tr("أُسندت في الفترة", "Assigned (period)"), align: "end", render: (r) => <span className="tnum">{formatNumber(r.assignedInPeriod)}</span> },
+    { key: "assignmentEvents", header: tr("أحداث الإسناد", "Assignment events"), align: "end", render: (r) => <span className="tnum">{formatNumber(r.assignmentEvents)}</span> },
+    { key: "firstResponsesInPeriod", header: tr("ردود أولى", "First responses"), align: "end", render: (r) => <span className="tnum">{formatNumber(r.firstResponsesInPeriod)}</span> },
+    { key: "createdInPeriod", header: tr("أُنشئت في الفترة", "Created (period)"), align: "end", render: (r) => <span className="tnum">{formatNumber(r.createdInPeriod)}</span> },
+    { key: "resolvedInPeriod", header: tr("أُغلقت في الفترة", "Resolved (period)"), align: "end", render: (r) => <span className="tnum">{formatNumber(r.resolvedInPeriod)}</span> },
+    { key: "needsReplyNow", header: tr("تحتاج رد الآن", "Needs reply now"), align: "end", render: (r) => <span className="tnum">{formatNumber(r.needsReplyNow)}</span> },
   ];
 
   return (
@@ -176,25 +179,25 @@ export default function AuditPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatTile
-            label="محادثات مفحوصة من Chatwoot"
+            label={tr("محادثات مفحوصة من Chatwoot", "Conversations scanned from Chatwoot")}
             value={formatNumber(f?.scanned ?? 0)}
             icon={<ShieldCheck className="h-[18px] w-[18px]" />}
             tone="brand"
           />
           <StatTile
-            label="موظفون غير مطابِقين"
+            label={tr("موظفون غير مطابِقين", "Mismatched agents")}
             value={formatNumber(f?.mismatchedAgents ?? 0)}
             icon={<AlertTriangle className="h-[18px] w-[18px]" />}
             tone={f?.mismatchedAgents ? "danger" : "success"}
           />
           <StatTile
-            label="محادثات غير مطابِقة"
+            label={tr("محادثات غير مطابِقة", "Mismatched conversations")}
             value={formatNumber(f?.mismatchedConversations ?? 0)}
             icon={<AlertTriangle className="h-[18px] w-[18px]" />}
             tone={f?.mismatchedConversations ? "danger" : "success"}
           />
           <StatTile
-            label="آخر استيراد"
+            label={tr("آخر استيراد", "Last ingest")}
             value={f?.lastIngestAt ? formatDateTime(f.lastIngestAt) : "—"}
             icon={<RefreshCw className="h-[18px] w-[18px]" />}
             tone={f?.stale ? "warning" : "neutral"}
@@ -206,7 +209,7 @@ export default function AuditPage() {
         <div className="flex items-center gap-3 rounded-card border border-warning/30 bg-warning/5 px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-warning-fg" aria-hidden />
           <p className="text-sm font-semibold text-warning-fg">
-            بيانات الداشبورد قديمة — آخر استيراد مضى عليه أكثر من ساعة بينما Chatwoot به محادثات نشطة.
+            {tr("بيانات الداشبورد قديمة — آخر استيراد مضى عليه أكثر من ساعة بينما Chatwoot به محادثات نشطة.", "Dashboard data is stale — the last ingest was over an hour ago while Chatwoot has active conversations.")}
           </p>
         </div>
       )}
@@ -215,7 +218,7 @@ export default function AuditPage() {
         <div className="flex items-center gap-3 rounded-card border border-border bg-muted px-4 py-3">
           <AlertTriangle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <p className="text-xs text-muted-foreground">
-            لقطة Chatwoot غير مكتملة — تم بلوغ حد الصفحات. زد `maxPages` لفحص كامل.
+            {tr("لقطة Chatwoot غير مكتملة — تم بلوغ حد الصفحات. زد `maxPages` لفحص كامل.", "Chatwoot snapshot is incomplete — the page limit was reached. Increase `maxPages` for a full scan.")}
           </p>
         </div>
       )}
@@ -224,20 +227,19 @@ export default function AuditPage() {
         <CardTitle
           hint={
             f
-              ? `لقطة Chatwoot: ${formatDateTime(f.chatwootSnapshotAt)} · ${formatNumber(f.pages)} صفحة`
+              ? `${tr("لقطة Chatwoot", "Chatwoot snapshot")}: ${formatDateTime(f.chatwootSnapshotAt)} · ${formatNumber(f.pages)} ${tr("صفحة", "pages")}`
               : undefined
           }
           action={
             <button onClick={reconcile} disabled={reconciling} className="btn-primary px-3 py-1.5 text-xs">
-              {reconciling ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} إعادة مطابقة الحمل الحالي
+              {reconciling ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} {tr("إعادة مطابقة الحمل الحالي", "Reconcile current workload")}
             </button>
           }
         >
-          مطابقة الحمل الحالي
+          {tr("مطابقة الحمل الحالي", "Reconcile current workload")}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          يقارن الحالات النشطة (open / pending / snoozed) في Chatwoot بما هو مخزَّن. القراءة فقط من Chatwoot؛ إعادة
-          المطابقة تكتب في قاعدة التحليلات وحدها.
+          {tr("يقارن الحالات النشطة (open / pending / snoozed) في Chatwoot بما هو مخزَّن. القراءة فقط من Chatwoot؛ إعادة المطابقة تكتب في قاعدة التحليلات وحدها.", "Compares the active statuses (open / pending / snoozed) in Chatwoot with what is stored. Read-only against Chatwoot; reconciliation writes only to the analytics database.")}
         </p>
         {reconcileResult && (
           <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-success-fg">
@@ -246,7 +248,7 @@ export default function AuditPage() {
         )}
       </Card>
 
-      <Section title="التدقيق لكل موظف" hint="اضغط على صف لعرض أرقام المحادثات وسبب كل استبعاد">
+      <Section title={tr("التدقيق لكل موظف", "Per-agent audit")} hint={tr("اضغط على صف لعرض أرقام المحادثات وسبب كل استبعاد", "Click a row to see conversation ids and why each is excluded")}>
         {loading ? (
           <LoadingBlock />
         ) : error ? (
@@ -261,7 +263,7 @@ export default function AuditPage() {
                 rows={data?.rows ?? []}
                 getKey={(r) => r.agentId}
                 onRowClick={(r) => setSelected(r.agentId)}
-                emptyTitle="لا توجد بيانات للتدقيق"
+                emptyTitle={tr("لا توجد بيانات للتدقيق", "No audit data")}
               />
             </div>
 
@@ -275,7 +277,7 @@ export default function AuditPage() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-bold">{r.name}</span>
                       {r.difference === 0 ? (
-                        <Badge tone="success">مطابِق</Badge>
+                        <Badge tone="success">{tr("مطابِق", "Match")}</Badge>
                       ) : (
                         <Badge tone="danger">{r.difference > 0 ? `+${r.difference}` : r.difference}</Badge>
                       )}
@@ -287,11 +289,11 @@ export default function AuditPage() {
                       </div>
                       <div className="px-2 py-2 text-center">
                         <dd className="text-sm font-bold tnum">{formatNumber(r.dashboardActive)}</dd>
-                        <dt className="text-2xs text-muted-foreground">الداشبورد</dt>
+                        <dt className="text-2xs text-muted-foreground">{tr("الداشبورد", "Dashboard")}</dt>
                       </div>
                       <div className="px-2 py-2 text-center">
                         <dd className="text-sm font-bold tnum">{formatNumber(r.assignedInPeriod)}</dd>
-                        <dt className="text-2xs text-muted-foreground">أُسندت</dt>
+                        <dt className="text-2xs text-muted-foreground">{tr("أُسندت", "Assigned")}</dt>
                       </div>
                     </dl>
                   </button>
@@ -305,10 +307,10 @@ export default function AuditPage() {
       {selected !== null && (
         <Section
           title={`تفاصيل التدقيق — ${data?.rows.find((r) => r.agentId === selected)?.name ?? `#${selected}`}`}
-          hint="كل رقم محادثة، وسبب احتسابه أو استبعاده"
+          hint={tr("كل رقم محادثة، وسبب احتسابه أو استبعاده", "Every conversation id and why it counts or not")}
           action={
             <button onClick={() => setSelected(null)} className="btn-ghost rounded-full px-3 py-1.5 text-xs">
-              إغلاق
+              {tr("إغلاق", "Close")}
             </button>
           }
         >
@@ -319,11 +321,11 @@ export default function AuditPage() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-surface-2 p-3 text-center">
                   <div className="text-lg font-bold tnum">{formatNumber(detail.totals.chatwootActive)}</div>
-                  <div className="text-2xs text-muted-foreground">Chatwoot نشط</div>
+                  <div className="text-2xs text-muted-foreground">{tr("Chatwoot نشط", "Chatwoot active")}</div>
                 </div>
                 <div className="rounded-xl bg-surface-2 p-3 text-center">
                   <div className="text-lg font-bold tnum">{formatNumber(detail.totals.dashboardActive)}</div>
-                  <div className="text-2xs text-muted-foreground">الداشبورد نشط</div>
+                  <div className="text-2xs text-muted-foreground">{tr("الداشبورد نشط", "Dashboard active")}</div>
                 </div>
                 <div className="rounded-xl bg-surface-2 p-3 text-center">
                   <div
@@ -334,28 +336,28 @@ export default function AuditPage() {
                   >
                     {detail.totals.difference > 0 ? `+${detail.totals.difference}` : detail.totals.difference}
                   </div>
-                  <div className="text-2xs text-muted-foreground">الفرق</div>
+                  <div className="text-2xs text-muted-foreground">{tr("الفرق", "Difference")}</div>
                 </div>
               </div>
 
               <Bucket
-                title="موجودة في Chatwoot وغير محسوبة في الداشبورد"
+                title={tr("موجودة في Chatwoot وغير محسوبة في الداشبورد", "In Chatwoot but not counted in the dashboard")}
                 tone="danger"
                 entries={detail.missingInDashboard}
               />
               <Bucket
-                title="محسوبة في الداشبورد وغير مُسندة حاليًا في Chatwoot"
+                title={tr("محسوبة في الداشبورد وغير مُسندة حاليًا في Chatwoot", "Counted in the dashboard but not currently assigned in Chatwoot")}
                 tone="warning"
                 entries={detail.notAssignedInChatwoot}
               />
-              <Bucket title="محسوبة ضمن الحمل الحالي" tone="success" entries={detail.countedAsWorkload} />
+              <Bucket title={tr("محسوبة ضمن الحمل الحالي", "Counted in the current workload")} tone="success" entries={detail.countedAsWorkload} />
 
               <div className="rounded-card border border-border p-4">
-                <h4 className="mb-2 text-sm font-bold">نشاط الإسناد خلال الفترة</h4>
+                <h4 className="mb-2 text-sm font-bold">{tr("نشاط الإسناد خلال الفترة", "Assignment activity in the period")}</h4>
                 <p className="mb-2 text-xs text-muted-foreground">
-                  {formatNumber(detail.periodAssignment.uniqueConversations)} محادثة فريدة ·{" "}
-                  {formatNumber(detail.periodAssignment.events)} حدث إسناد ·{" "}
-                  {formatNumber(detail.periodAssignment.responses)} رد أول
+                  {formatNumber(detail.periodAssignment.uniqueConversations)} {tr("محادثة فريدة", "unique")} ·{" "}
+                  {formatNumber(detail.periodAssignment.events)} {tr("حدث إسناد", "events")} ·{" "}
+                  {formatNumber(detail.periodAssignment.responses)} {tr("رد أول", "first responses")}
                 </p>
                 <IdList ids={detail.periodAssignment.conversationIds} />
               </div>

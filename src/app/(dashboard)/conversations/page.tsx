@@ -10,10 +10,12 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { ConversationDrawer } from "@/components/ConversationDrawer";
 import { formatDurationShort, formatNumber, formatDateTime } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 type Row = ConversationsPage["rows"][number];
 
 export default function ConversationsPage() {
+  const { tr } = useLocale();
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const [page, setPage] = useState(1);
@@ -43,20 +45,20 @@ export default function ConversationsPage() {
   };
 
   const allColumns: Column<Row>[] = [
-    { key: "contactName", header: "العميل", render: (r) => <span className="font-medium text-primary">{r.contactName || `#${r.chatwootId}`}</span> },
-    { key: "contactPhone", header: "الهاتف", render: (r) => <span className="tnum text-muted-foreground ltr-nums">{r.contactPhone || "—"}</span> },
-    { key: "status", header: "الحالة", sortable: true, render: (r) => <StatusPill status={r.status} /> },
-    { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
-    { key: "teamName", header: "الفريق", render: (r) => r.teamName || "—" },
-    { key: "department", header: "القسم", sortable: true, render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "inboxName", header: "القناة", render: (r) => r.inboxName || "—" },
-    { key: "responseSeconds", header: "زمن الرد", sortable: true, render: (r) => <span className="tnum">{formatDurationShort(r.responseSeconds)}</span> },
-    { key: "conversationDurationSeconds", header: "المدة", sortable: true, render: (r) => <span className="tnum">{formatDurationShort(r.conversationDurationSeconds)}</span> },
-    { key: "campaignLabel", header: "الكامبين", render: (r) => (r.campaignLabel ? <Badge tone="primary">{r.campaignLabel}</Badge> : "—") },
-    { key: "botInvolved", header: "فهد", render: (r) => (r.botInvolved ? <Badge tone="warning">نعم</Badge> : "—") },
-    { key: "unreadCount", header: "غير مقروء", render: (r) => <span className="tnum">{formatNumber(r.unreadCount)}</span> },
-    { key: "needsReply", header: "يحتاج رد", render: (r) => <NeedsReplyDot value={r.needsReply} /> },
-    { key: "lastMessageAt", header: "آخر رسالة", sortable: true, render: (r) => <span className="text-xs text-muted-foreground">{formatDateTime(r.lastMessageAt)}</span> },
+    { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <span className="font-medium text-primary">{r.contactName || `#${r.chatwootId}`}</span> },
+    { key: "contactPhone", header: tr("الهاتف", "Phone"), render: (r) => <span className="tnum text-muted-foreground ltr-nums">{r.contactPhone || "—"}</span> },
+    { key: "status", header: tr("الحالة", "Status"), sortable: true, render: (r) => <StatusPill status={r.status} /> },
+    { key: "assigneeName", header: tr("الموظف", "Agent"), render: (r) => r.assigneeName || "—" },
+    { key: "teamName", header: tr("الفريق", "Team"), render: (r) => r.teamName || "—" },
+    { key: "department", header: tr("القسم", "Department"), sortable: true, render: (r) => <DepartmentPill department={r.department} /> },
+    { key: "inboxName", header: tr("القناة", "Channel"), render: (r) => r.inboxName || "—" },
+    { key: "responseSeconds", header: tr("زمن الرد", "Response time"), sortable: true, render: (r) => <span className="tnum">{formatDurationShort(r.responseSeconds)}</span> },
+    { key: "conversationDurationSeconds", header: tr("المدة", "Duration"), sortable: true, render: (r) => <span className="tnum">{formatDurationShort(r.conversationDurationSeconds)}</span> },
+    { key: "campaignLabel", header: tr("الكامبين", "Campaign"), render: (r) => (r.campaignLabel ? <Badge tone="primary">{r.campaignLabel}</Badge> : "—") },
+    { key: "botInvolved", header: tr("فهد", "Fahd"), render: (r) => (r.botInvolved ? <Badge tone="warning">نعم</Badge> : "—") },
+    { key: "unreadCount", header: tr("غير مقروء", "Unread"), render: (r) => <span className="tnum">{formatNumber(r.unreadCount)}</span> },
+    { key: "needsReply", header: tr("يحتاج رد", "Needs reply"), render: (r) => <NeedsReplyDot value={r.needsReply} /> },
+    { key: "lastMessageAt", header: tr("آخر رسالة", "Last message"), sortable: true, render: (r) => <span className="text-xs text-muted-foreground">{formatDateTime(r.lastMessageAt)}</span> },
   ];
   const columns = allColumns.filter((c) => !hidden.has(c.key));
 
@@ -89,15 +91,15 @@ export default function ConversationsPage() {
               sortBy={sortBy}
               sortDir={sortDir}
               onSort={onSort}
-              emptyTitle="لا توجد محادثات مطابقة"
+              emptyTitle={tr("لا توجد محادثات مطابقة", "No matching conversations")}
             />
             <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
               <span>صفحة {formatNumber(page)} من {formatNumber(totalPages)}</span>
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded-lg border border-border p-1.5 disabled:opacity-40 cursor-pointer" aria-label="السابق">
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded-lg border border-border p-1.5 disabled:opacity-40 cursor-pointer" aria-label={tr("السابق", "Previous")}>
                   <ChevronRight className="h-4 w-4" />
                 </button>
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded-lg border border-border p-1.5 disabled:opacity-40 cursor-pointer" aria-label="التالي">
+                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="rounded-lg border border-border p-1.5 disabled:opacity-40 cursor-pointer" aria-label={tr("التالي", "Next")}>
                   <ChevronLeft className="h-4 w-4" />
                 </button>
               </div>

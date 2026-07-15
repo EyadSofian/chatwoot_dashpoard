@@ -4,6 +4,7 @@ import { X, ExternalLink } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import { Spinner, StatusPill, DepartmentPill, Badge, cn } from "@/components/ui";
 import { formatDurationShort, formatDateTime } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 interface TimelineItem {
   at: string;
@@ -51,6 +52,7 @@ const KIND_COLOR: Record<string, string> = {
 };
 
 export function ConversationDrawer({ conversationId, onClose }: { conversationId: number; onClose: () => void }) {
+  const { tr } = useLocale();
   const { data, loading, error } = useApiData<ConversationDetail>(`/api/conversations/${conversationId}`);
   const c = data?.conversation;
 
@@ -60,16 +62,16 @@ export function ConversationDrawer({ conversationId, onClose }: { conversationId
       <aside className="fixed inset-y-0 z-50 flex w-full max-w-[480px] flex-col border-e border-border bg-surface shadow-pop" style={{ left: 0 }}>
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold">{c?.contactName || `محادثة #${conversationId}`}</div>
+            <div className="truncate text-sm font-bold">{c?.contactName || `${tr("محادثة", "Conversation")} #${conversationId}`}</div>
             <div className="truncate text-xs text-muted-foreground ltr-nums">{c?.contactPhone || ""}</div>
           </div>
           <div className="flex items-center gap-1">
             {data?.link && (
-              <a href={data.link} target="_blank" rel="noreferrer" className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-primary" aria-label="فتح في Chatwoot">
+              <a href={data.link} target="_blank" rel="noreferrer" className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-primary" aria-label={tr("فتح في Chatwoot", "Open in Chatwoot")}>
                 <ExternalLink className="h-4 w-4" />
               </a>
             )}
-            <button onClick={onClose} className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground cursor-pointer" aria-label="إغلاق">
+            <button onClick={onClose} className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={tr("إغلاق", "Close")}>
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -83,23 +85,23 @@ export function ConversationDrawer({ conversationId, onClose }: { conversationId
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <StatusPill status={c.status} />
                 <DepartmentPill department={c.department} />
-                {c.campaignLabel && <Badge tone="primary">كامبين: {c.campaignLabel}</Badge>}
-                {c.botInvolved && <Badge tone="warning">تدخل فهد</Badge>}
-                {c.needsReply && <Badge tone="danger">يحتاج رد</Badge>}
+                {c.campaignLabel && <Badge tone="primary">{tr("كامبين", "Campaign")}: {c.campaignLabel}</Badge>}
+                {c.botInvolved && <Badge tone="warning">{tr("تدخل فهد", "Fahd involved")}</Badge>}
+                {c.needsReply && <Badge tone="danger">{tr("يحتاج رد", "Needs reply")}</Badge>}
               </div>
 
               <dl className="mb-4 grid grid-cols-2 gap-3 text-sm">
-                <Meta label="الموظف" value={c.assigneeName} />
-                <Meta label="الفريق" value={c.teamName} />
-                <Meta label="القناة" value={c.inboxName} />
-                <Meta label="زمن الرد" value={formatDurationShort(c.responseSeconds)} />
-                <Meta label="مدة المحادثة" value={formatDurationShort(c.conversationDurationSeconds)} />
-                <Meta label="وقت الإسناد" value={formatDateTime(c.assignedAt)} />
-                <Meta label="أول رد بشري" value={formatDateTime(c.firstHumanReplyAt)} />
-                <Meta label="وقت الحل" value={formatDateTime(c.resolvedAt)} />
+                <Meta label={tr("الموظف", "Agent")} value={c.assigneeName} />
+                <Meta label={tr("الفريق", "Team")} value={c.teamName} />
+                <Meta label={tr("القناة", "Channel")} value={c.inboxName} />
+                <Meta label={tr("زمن الرد", "Response time")} value={formatDurationShort(c.responseSeconds)} />
+                <Meta label={tr("مدة المحادثة", "Duration")} value={formatDurationShort(c.conversationDurationSeconds)} />
+                <Meta label={tr("وقت الإسناد", "Assigned at")} value={formatDateTime(c.assignedAt)} />
+                <Meta label={tr("أول رد بشري", "First human reply")} value={formatDateTime(c.firstHumanReplyAt)} />
+                <Meta label={tr("وقت الحل", "Resolved at")} value={formatDateTime(c.resolvedAt)} />
               </dl>
 
-              <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">التسلسل الزمني</div>
+              <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{tr("التسلسل الزمني", "Timeline")}</div>
               <ol className="relative space-y-3 border-s border-border ps-4">
                 {data?.timeline.map((t, i) => (
                   <li key={i} className="relative">
@@ -111,7 +113,7 @@ export function ConversationDrawer({ conversationId, onClose }: { conversationId
                     {t.detail && <div className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">{t.detail}</div>}
                   </li>
                 ))}
-                {!data?.timeline.length && <li className="text-xs text-muted-foreground">لا توجد أحداث.</li>}
+                {!data?.timeline.length && <li className="text-xs text-muted-foreground">{tr("لا توجد أحداث.", "No events.")}</li>}
               </ol>
             </>
           )}

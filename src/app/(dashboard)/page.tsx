@@ -19,14 +19,10 @@ import {
 import { TrendChart, DeptResponseBar } from "@/components/charts";
 import { ExportButton } from "@/components/ExportButton";
 import { formatDurationShort, formatNumber, formatPercent } from "@/lib/format";
-import {
-  DEPARTMENT_LABELS_AR,
-  CAMPAIGN_SOURCE_LABELS_AR,
-  type Department,
-  type CampaignSource,
-} from "@/lib/constants";
+import { useLocale, campaignSourceLabel, departmentLabel } from "@/lib/i18n";
 
 export default function OverviewPage() {
+  const { tr, locale } = useLocale();
   const { data, loading, error } = useApiData<OverviewResult>("/api/overview");
 
   if (loading) {
@@ -44,8 +40,8 @@ export default function OverviewPage() {
   if (!data) {
     return (
       <EmptyState
-        title="لا توجد بيانات"
-        hint="ابدأ من الإعدادات: Backfill أو Webhook."
+        title={tr("لا توجد بيانات", "No data yet")}
+        hint={tr("ابدأ من الإعدادات: Backfill أو Webhook.", "Start from Settings: Backfill or Webhook.")}
       />
     );
   }
@@ -54,7 +50,7 @@ export default function OverviewPage() {
   const deptChart = data.responseByDepartment
     .filter((d) => d.avgResponseSeconds !== null)
     .map((d) => ({
-      department: DEPARTMENT_LABELS_AR[d.department as Department] ?? d.department,
+      department: departmentLabel(d.department, locale),
       avg: d.avgResponseSeconds ?? 0,
     }));
 
@@ -63,57 +59,57 @@ export default function OverviewPage() {
       {/* ── Headline KPIs — four, big, one glance ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
-          label="إجمالي المحادثات"
+          label={tr("إجمالي المحادثات", "Total conversations")}
           value={formatNumber(k.totalConversations)}
           icon={<MessageSquare className="h-[18px] w-[18px]" />}
           tone="brand"
-          sub={`${formatNumber(k.openNow)} مفتوحة الآن`}
+          sub={`${formatNumber(k.openNow)} ${tr("مفتوحة الآن", "open now")}`}
         />
         <StatTile
-          label="متوسط زمن الرد"
+          label={tr("متوسط زمن الرد", "Avg response time")}
           value={formatDurationShort(k.avgResponseSeconds)}
           icon={<Timer className="h-[18px] w-[18px]" />}
           tone="violet"
-          sub={`الوسيط ${formatDurationShort(k.medianResponseSeconds)} · من لحظة الإسناد`}
+          sub={`${tr("الوسيط", "Median")} ${formatDurationShort(k.medianResponseSeconds)} · ${tr("من لحظة الإسناد", "from assignment")}`}
         />
         <StatTile
-          label="تحتاج رد"
+          label={tr("تحتاج رد", "Needs reply")}
           value={formatNumber(k.needsReply)}
           icon={<Reply className="h-[18px] w-[18px]" />}
           tone="warning"
-          sub="آخر رسالة من العميل"
+          sub={tr("آخر رسالة من العميل", "Customer messaged last")}
         />
         <StatTile
-          label="خرق مستوى الخدمة"
+          label={tr("خرق مستوى الخدمة", "SLA breaches")}
           value={formatNumber(k.slaBreaches)}
           icon={<AlertTriangle className="h-[18px] w-[18px]" />}
           tone="danger"
-          sub={<Link href="/sla" className="font-semibold text-primary hover:underline">عرض التفاصيل ←</Link>}
+          sub={<Link href="/sla" className="font-semibold text-primary hover:underline">{tr("عرض التفاصيل ←", "View details →")}</Link>}
         />
       </div>
 
       {/* ── Secondary strip ── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile
-          label="متوسط زمن الحل"
+          label={tr("متوسط زمن الحل", "Avg resolution time")}
           value={formatDurationShort(k.avgResolutionSeconds)}
           icon={<CheckCircle2 className="h-[18px] w-[18px]" />}
           tone="success"
         />
         <StatTile
-          label="مفتوحة الآن"
+          label={tr("مفتوحة الآن", "Open now")}
           value={formatNumber(k.openNow)}
           icon={<Clock className="h-[18px] w-[18px]" />}
           tone="brand"
         />
         <StatTile
-          label="رسائل الكامبين"
+          label={tr("رسائل الكامبين", "Campaign sends")}
           value={formatNumber(k.campaignsSent)}
           icon={<Megaphone className="h-[18px] w-[18px]" />}
           tone="violet"
         />
         <StatTile
-          label="ردود الكامبين"
+          label={tr("ردود الكامبين", "Campaign replies")}
           value={formatNumber(k.campaignReplies)}
           icon={<Users className="h-[18px] w-[18px]" />}
           tone="success"
@@ -123,24 +119,24 @@ export default function OverviewPage() {
       {/* ── Charts ── */}
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardTitle hint="جديدة مقابل محلولة">اتجاه المحادثات</CardTitle>
-          {data.dailyTrend.length ? <TrendChart data={data.dailyTrend} /> : <EmptyState title="لا توجد بيانات في الفترة دي" />}
+          <CardTitle hint={tr("جديدة مقابل محلولة", "New vs resolved")}>{tr("اتجاه المحادثات", "Conversation trend")}</CardTitle>
+          {data.dailyTrend.length ? <TrendChart data={data.dailyTrend} /> : <EmptyState title={tr("لا توجد بيانات في الفترة", "No data in this period")} />}
         </Card>
 
         <Card>
-          <CardTitle hint="من الإسناد إلى أول رد">زمن الرد حسب القسم</CardTitle>
-          {deptChart.length ? <DeptResponseBar data={deptChart} /> : <EmptyState title="لا توجد بيانات" />}
+          <CardTitle hint={tr("من الإسناد إلى أول رد", "From assignment to first reply")}>{tr("زمن الرد حسب القسم", "Response time by department")}</CardTitle>
+          {deptChart.length ? <DeptResponseBar data={deptChart} /> : <EmptyState title={tr("لا توجد بيانات", "No data")} />}
         </Card>
       </div>
 
       {/* ── Agent load + late conversations ── */}
       <div className="grid gap-5 lg:grid-cols-2">
-        <Section title="حمل الموظفين" hint="المفتوحة حاليًا">
+        <Section title={tr("حمل الموظفين", "Agent workload")} hint={tr("المفتوحة حاليًا", "Currently open")}>
           <div className="overflow-x-auto">
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>
                 <tr>
-                  {["الموظف", "مفتوحة", "تحتاج رد", "متوسط الرد"].map((h, i) => (
+                  {[tr("الموظف","Agent"), tr("مفتوحة","Open"), tr("تحتاج رد","Needs reply"), tr("متوسط الرد","Avg response")].map((h, i) => (
                     <th
                       key={h}
                       className={`border-b border-border bg-surface-2 px-5 py-3 text-2xs font-bold uppercase tracking-wide text-muted-foreground ${i === 0 ? "text-start" : "text-end"}`}
@@ -177,7 +173,7 @@ export default function OverviewPage() {
                 {!data.agentLoad.length && (
                   <tr>
                     <td colSpan={4}>
-                      <EmptyState title="لا يوجد موظفون في الفترة دي" />
+                      <EmptyState title={tr("لا يوجد موظفون في الفترة", "No agents in this period")} />
                     </td>
                   </tr>
                 )}
@@ -187,15 +183,15 @@ export default function OverviewPage() {
         </Section>
 
         <Section
-          title="محادثات متأخرة"
-          hint="الأطول انتظارًا"
+          title={tr("محادثات متأخرة", "Delayed conversations")}
+          hint={tr("الأطول انتظارًا", "Longest waiting")}
           action={<ExportButton dataset="conversations" />}
         >
           <div className="overflow-x-auto">
             <table className="w-full border-separate border-spacing-0 text-sm">
               <thead>
                 <tr>
-                  {["العميل", "القسم", "الموظف", "الانتظار"].map((h, i) => (
+                  {[tr("العميل","Customer"), tr("القسم","Department"), tr("الموظف","Agent"), tr("الانتظار","Waiting")].map((h, i) => (
                     <th
                       key={h}
                       className={`border-b border-border bg-surface-2 px-5 py-3 text-2xs font-bold uppercase tracking-wide text-muted-foreground ${i === 3 ? "text-end" : "text-start"}`}
@@ -228,7 +224,7 @@ export default function OverviewPage() {
                 {!data.lateConversations.length && (
                   <tr>
                     <td colSpan={4}>
-                      <EmptyState title="لا توجد محادثات متأخرة"  />
+                      <EmptyState title={tr("لا توجد محادثات متأخرة", "No delayed conversations")}  />
                     </td>
                   </tr>
                 )}
@@ -240,7 +236,7 @@ export default function OverviewPage() {
 
       {/* ── Campaign performance ── */}
       <Card>
-        <CardTitle hint="Sales و Operations">أداء الكامبينات</CardTitle>
+        <CardTitle hint="Sales / Operations">{tr("أداء الكامبينات", "Campaign performance")}</CardTitle>
         <div className="grid gap-4 sm:grid-cols-2">
           {data.campaignPerformance.map((c) => (
             <div key={c.source} className="rounded-card border border-border p-4">
@@ -248,18 +244,16 @@ export default function OverviewPage() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Megaphone className="h-4 w-4" />
                 </span>
-                <span className="text-sm font-bold">
-                  {CAMPAIGN_SOURCE_LABELS_AR[c.source as CampaignSource] ?? c.source}
-                </span>
+                <span className="text-sm font-bold">{campaignSourceLabel(c.source, locale)}</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <MiniStat label="مُرسل" value={formatNumber(c.sent)} />
-                <MiniStat label="ردود" value={formatNumber(c.replies)} tone="success" />
-                <MiniStat label="نسبة الرد" value={formatPercent(c.replyRate, 1)} tone="brand" />
+                <MiniStat label={tr("مُرسل", "Sent")} value={formatNumber(c.sent)} />
+                <MiniStat label={tr("ردود", "Replies")} value={formatNumber(c.replies)} tone="success" />
+                <MiniStat label={tr("نسبة الرد", "Reply rate")} value={formatPercent(c.replyRate, 1)} tone="brand" />
               </div>
             </div>
           ))}
-          {!data.campaignPerformance.length && <EmptyState title="لا توجد كامبينات" />}
+          {!data.campaignPerformance.length && <EmptyState title={tr("لا توجد كامبينات", "No campaigns")} />}
         </div>
       </Card>
     </div>

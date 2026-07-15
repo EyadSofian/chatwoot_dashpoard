@@ -18,6 +18,7 @@ import {
 import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { formatDurationShort, formatNumber } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 const dash = <span className="text-muted-foreground">—</span>;
 
@@ -26,6 +27,7 @@ export default function AgentsPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const { tr } = useLocale();
   const activeOnly = searchParams.get("activeOnly") === "true";
   const { data, loading, error } = useApiData<{ rows: AgentRow[]; summary: AgentSummary }>("/api/agents");
 
@@ -42,7 +44,7 @@ export default function AgentsPage() {
   const columns: Column<AgentRow>[] = [
     {
       key: "name",
-      header: "الموظف",
+      header: tr("الموظف", "Agent"),
       render: (r) => (
         <div className="flex items-center gap-2.5">
           <Avatar name={r.name} />
@@ -50,7 +52,7 @@ export default function AgentsPage() {
             <div className={cn("truncate font-semibold", r.hasActivity ? "text-foreground" : "text-muted-foreground")}>
               {r.name}
             </div>
-            {!r.hasActivity && <div className="text-2xs text-muted-foreground">لا يوجد نشاط</div>}
+            {!r.hasActivity && <div className="text-2xs text-muted-foreground">{tr("لا يوجد نشاط", "No activity")}</div>}
           </div>
         </div>
       ),
@@ -58,7 +60,7 @@ export default function AgentsPage() {
     // ── Live state. Deliberately first: it is what Chatwoot shows. ──
     {
       key: "currentWorkload",
-      header: "الحمل الحالي",
+      header: tr("الحمل الحالي", "Current"),
       align: "end",
       render: (r) => (
         <div className="tnum">
@@ -71,7 +73,7 @@ export default function AgentsPage() {
     },
     {
       key: "needsReplyNow",
-      header: "تحتاج رد الآن",
+      header: tr("تحتاج رد الآن", "Needs reply now"),
       align: "end",
       render: (r) => (
         <span className={cn("tnum", r.needsReplyNow > 0 && "font-bold text-destructive-fg")}>
@@ -80,22 +82,22 @@ export default function AgentsPage() {
       ),
     },
     // ── Period activity. Named so it can never be read as live state. ──
-    { key: "assignedInPeriod", header: "أُسندت في الفترة", align: "end", render: (r) => num(r.assignedInPeriod) },
-    { key: "assignmentEvents", header: "أحداث الإسناد", align: "end", render: (r) => num(r.assignmentEvents) },
-    { key: "createdInPeriod", header: "أُنشئت في الفترة", align: "end", render: (r) => num(r.createdInPeriod) },
+    { key: "assignedInPeriod", header: tr("أُسندت في الفترة", "Assigned (period)"), align: "end", render: (r) => num(r.assignedInPeriod) },
+    { key: "assignmentEvents", header: tr("أحداث الإسناد", "Assignment events"), align: "end", render: (r) => num(r.assignmentEvents) },
+    { key: "createdInPeriod", header: tr("أُنشئت في الفترة", "Created (period)"), align: "end", render: (r) => num(r.createdInPeriod) },
     {
       key: "resolvedWhileAssigned",
-      header: "أُغلقت في الفترة",
+      header: tr("أُغلقت في الفترة", "Resolved (period)"),
       align: "end",
       render: (r) => num(r.resolvedWhileAssigned),
     },
-    { key: "avgResponseSeconds", header: "متوسط الرد", align: "end", render: (r) => dur(r.avgResponseSeconds) },
-    { key: "medianResponseSeconds", header: "الوسيط", align: "end", render: (r) => dur(r.medianResponseSeconds) },
+    { key: "avgResponseSeconds", header: tr("متوسط الرد", "Avg response"), align: "end", render: (r) => dur(r.avgResponseSeconds) },
+    { key: "medianResponseSeconds", header: tr("الوسيط", "Median"), align: "end", render: (r) => dur(r.medianResponseSeconds) },
     { key: "p90ResponseSeconds", header: "p90", align: "end", render: (r) => dur(r.p90ResponseSeconds) },
-    { key: "maxResponseSeconds", header: "الأقصى", align: "end", render: (r) => dur(r.maxResponseSeconds) },
+    { key: "maxResponseSeconds", header: tr("الأقصى", "Max"), align: "end", render: (r) => dur(r.maxResponseSeconds) },
     {
       key: "slaBreaches",
-      header: "خرق SLA",
+      header: tr("خرق SLA", "SLA breaches"),
       align: "end",
       render: (r) =>
         r.slaBreaches ? <Badge tone="danger">{formatNumber(r.slaBreaches)}</Badge> : r.hasActivity ? num(0) : dash,
@@ -111,35 +113,35 @@ export default function AgentsPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <StatTile
-            label="الحمل الحالي"
+            label={tr("الحمل الحالي", "Current workload")}
             value={formatNumber(s?.currentWorkload ?? 0)}
             icon={<Inbox className="h-[18px] w-[18px]" />}
             tone="brand"
-            sub="الحالة الآن — لا تتأثر بالفترة"
+            sub={tr("الحالة الآن — لا تتأثر بالفترة", "Live state — ignores the period")}
           />
           <StatTile
-            label="تحتاج رد الآن"
+            label={tr("تحتاج رد الآن", "Needs reply now")}
             value={formatNumber(s?.needsReplyNow ?? 0)}
             icon={<Reply className="h-[18px] w-[18px]" />}
             tone="warning"
-            sub="الحالة الآن"
+            sub={tr("الحالة الآن", "Live state")}
           />
           <StatTile
-            label="أُسندت في الفترة"
+            label={tr("أُسندت في الفترة", "Assigned in period")}
             value={formatNumber(s?.assignedInPeriod ?? 0)}
             icon={<Users className="h-[18px] w-[18px]" />}
             tone="violet"
-            sub="محادثات فريدة"
+            sub={tr("محادثات فريدة", "Unique conversations")}
           />
           <StatTile
-            label="متوسط الرد"
+            label={tr("متوسط الرد", "Avg response")}
             value={s?.avgResponseSeconds != null ? formatDurationShort(s.avgResponseSeconds) : "—"}
             icon={<Timer className="h-[18px] w-[18px]" />}
             tone="neutral"
             sub={s?.p90ResponseSeconds != null ? `p90: ${formatDurationShort(s.p90ResponseSeconds)}` : undefined}
           />
           <StatTile
-            label="خرق SLA"
+            label={tr("خرق SLA", "SLA breaches")}
             value={formatNumber(s?.slaBreaches ?? 0)}
             icon={<AlertTriangle className="h-[18px] w-[18px]" />}
             tone="danger"
@@ -155,17 +157,16 @@ export default function AgentsPage() {
       <div className="flex items-start gap-3 rounded-card border border-border bg-muted px-4 py-3">
         <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <p className="text-xs leading-relaxed text-muted-foreground">
-          <strong className="text-foreground">الحمل الحالي</strong> هو الحالة الآن (open / pending / snoozed) ولا تؤثر
-          عليه الفترة المختارة — وهو ما يطابق Chatwoot.{" "}
-          <strong className="text-foreground">أُسندت في الفترة</strong> تعتمد على تاريخ الإسناد.{" "}
-          <strong className="text-foreground">أُنشئت في الفترة</strong> تعتمد على تاريخ إنشاء المحادثة. ثلاثة أرقام
-          مختلفة، ولا يصح دمجها في رقم واحد.
+          {tr(
+            "«الحمل الحالي» هو الحالة الآن (open / pending / snoozed) ولا تؤثر عليه الفترة المختارة — وهو ما يطابق Chatwoot. «أُسندت في الفترة» تعتمد على تاريخ الإسناد. «أُنشئت في الفترة» تعتمد على تاريخ إنشاء المحادثة. ثلاثة أرقام مختلفة، ولا يصح دمجها في رقم واحد.",
+            "“Current workload” is the state right now (open / pending / snoozed) and ignores the selected period — it matches Chatwoot. “Assigned in period” is based on the assignment date. “Created in period” is based on the conversation creation date. Three different numbers that must not be merged into one.",
+          )}
         </p>
       </div>
 
       <Section
-        title="أداء كل الموظفين"
-        hint="الفترة تحدد الأرقام، لا قائمة الموظفين"
+        title={tr("أداء كل الموظفين", "All agents performance")}
+        hint={tr("الفترة تحدد الأرقام، لا قائمة الموظفين", "The period changes the numbers, not who appears")}
         action={
           <div className="flex items-center gap-3">
             <label
@@ -182,7 +183,7 @@ export default function AgentsPage() {
                 checked={activeOnly}
                 onChange={(e) => toggleActiveOnly(e.target.checked)}
               />
-              النشطون فقط
+              {tr("النشطون فقط", "Active only")}
             </label>
             <ExportButton dataset="agents" />
           </div>
@@ -204,8 +205,8 @@ export default function AgentsPage() {
                 onRowClick={(r) => router.push(`/agents/${r.agentId}`)}
                 emptyTitle={
                   activeOnly
-                    ? "لا يوجد موظفون نشطون في الفترة المختارة"
-                    : "لا يوجد موظفون — شغِّل Sync من الإعدادات"
+                    ? tr("لا يوجد موظفون نشطون في الفترة المختارة", "No active agents in the selected period")
+                    : tr("لا يوجد موظفون — شغِّل Sync من الإعدادات", "No agents — run a sync from Settings")
                 }
               />
             </div>
@@ -230,20 +231,20 @@ export default function AgentsPage() {
                         </div>
                         {!r.hasActivity && <div className="text-2xs text-muted-foreground">لا يوجد نشاط</div>}
                       </div>
-                      {r.needsReplyNow > 0 && <Badge tone="danger">{formatNumber(r.needsReplyNow)} تحتاج رد</Badge>}
+                      {r.needsReplyNow > 0 && <Badge tone="danger">{formatNumber(r.needsReplyNow)} {tr("تحتاج رد", "need reply")}</Badge>}
                     </div>
 
                     <StatStrip
                       className="mt-3"
                       items={[
-                        { label: "الحمل الحالي", value: formatNumber(r.currentWorkload), tone: "brand" },
-                        { label: "أُسندت", value: formatNumber(r.assignedInPeriod) },
+                        { label: tr("الحمل الحالي", "Current"), value: formatNumber(r.currentWorkload), tone: "brand" },
+                        { label: tr("أُسندت", "Assigned"), value: formatNumber(r.assignedInPeriod) },
                         {
-                          label: "متوسط الرد",
+                          label: tr("متوسط الرد", "Avg response"),
                           value: r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—",
                         },
                         {
-                          label: "خرق SLA",
+                          label: tr("خرق SLA", "SLA"),
                           value: formatNumber(r.slaBreaches),
                           tone: r.slaBreaches > 0 ? "danger" : "neutral",
                         },
@@ -254,7 +255,7 @@ export default function AgentsPage() {
               ))}
               {!(data?.rows ?? []).length && (
                 <li className="p-6 text-center text-sm text-muted-foreground">
-                  {activeOnly ? "لا يوجد موظفون نشطون في الفترة المختارة" : "لا يوجد موظفون — شغِّل Sync من الإعدادات"}
+                  {activeOnly ? tr("لا يوجد موظفون نشطون في الفترة المختارة", "No active agents in the selected period") : tr("لا يوجد موظفون — شغِّل Sync من الإعدادات", "No agents — run a sync from Settings")}
                 </li>
               )}
             </ul>

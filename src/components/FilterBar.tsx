@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import type { FilterOptions } from "@/lib/reporting/filterOptions";
-import { DEPARTMENT_LABELS_AR, STATUS_LABELS_AR, type Department } from "@/lib/constants";
+import { useLocale, departmentLabel, statusLabel } from "@/lib/i18n";
 import { RANGE_PRESETS, DEFAULT_RANGE, resolveRange, parseDateInput, toDateInput, type RangeKey } from "@/lib/dateRange";
 import { MultiSelect, type Option } from "@/components/MultiSelect";
 import { cn } from "@/components/ui";
@@ -29,6 +29,7 @@ export function FilterBar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { data: options } = useApiData<FilterOptions>("/api/filters");
+  const { locale, tr } = useLocale();
   const [sheet, setSheet] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -69,34 +70,34 @@ export function FilterBar() {
   const toValue = toDateInput(get("to") || fallback.to);
 
   const opt = (o: FilterOptions | null) => ({
-    department: (o?.departments ?? []).map((d) => ({ value: d, label: DEPARTMENT_LABELS_AR[d as Department] ?? d })),
+    department: (o?.departments ?? []).map((d) => ({ value: d, label: departmentLabel(d, locale) })),
     teamId: (o?.teams ?? []).map((t) => ({ value: String(t.id), label: t.name })),
     agentId: (o?.agents ?? []).map((a) => ({ value: String(a.id), label: a.name })),
     inboxId: (o?.inboxes ?? []).map((i) => ({ value: String(i.id), label: i.name })),
-    status: ["open", "pending", "resolved", "snoozed"].map((s) => ({ value: s, label: STATUS_LABELS_AR[s] ?? s })),
+    status: ["open", "pending", "resolved", "snoozed"].map((v) => ({ value: v, label: statusLabel(v, locale) })),
     campaignSource: [
-      { value: "sales", label: "المبيعات" },
-      { value: "operations", label: "العمليات" },
+      { value: "sales", label: tr("المبيعات", "Sales") },
+      { value: "operations", label: tr("العمليات", "Operations") },
     ],
     campaignLabel: (o?.campaignLabels ?? []).map((l) => ({ value: l, label: l })),
     label: (o?.labels ?? []).map((l) => ({ value: l.title, label: l.title })),
     sla: [
-      { value: "breached", label: "خرق" },
-      { value: "near_breach", label: "قريب" },
-      { value: "healthy", label: "سليم" },
+      { value: "breached", label: tr("خرق", "Breached") },
+      { value: "near_breach", label: tr("قريب", "Near breach") },
+      { value: "healthy", label: tr("سليم", "Healthy") },
     ],
   });
 
   const O = opt(options ?? null);
 
   const FIELDS: { key: string; label: string; options: Option[] }[] = [
-    { key: "department", label: "القسم", options: O.department },
-    { key: "teamId", label: "التيم", options: O.teamId },
-    { key: "agentId", label: "الموظف", options: O.agentId },
+    { key: "department", label: tr("القسم", "Department"), options: O.department },
+    { key: "teamId", label: tr("التيم", "Team"), options: O.teamId },
+    { key: "agentId", label: tr("الموظف", "Agent"), options: O.agentId },
     { key: "inboxId", label: "Inbox", options: O.inboxId },
-    { key: "status", label: "الحالة", options: O.status },
-    { key: "campaignSource", label: "مصدر الكامبين", options: O.campaignSource },
-    { key: "campaignLabel", label: "الكامبين", options: O.campaignLabel },
+    { key: "status", label: tr("الحالة", "Status"), options: O.status },
+    { key: "campaignSource", label: tr("مصدر الكامبين", "Campaign source"), options: O.campaignSource },
+    { key: "campaignLabel", label: tr("الكامبين", "Campaign"), options: O.campaignLabel },
     { key: "label", label: "Labels", options: O.label },
     { key: "sla", label: "SLA", options: O.sla },
   ];
@@ -117,7 +118,7 @@ export function FilterBar() {
         checked={get("needsReply") === "true"}
         onChange={(e) => setParams({ needsReply: e.target.checked ? "true" : undefined })}
       />
-      يحتاج رد
+      {tr("يحتاج رد", "Needs reply")}
     </label>
   );
 
@@ -126,7 +127,7 @@ export function FilterBar() {
       <div className="mx-auto flex max-w-[1600px] flex-col gap-3">
         {/* Period */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="hidden text-xs font-bold text-muted-foreground sm:inline">الفترة</span>
+          <span className="hidden text-xs font-bold text-muted-foreground sm:inline">{tr("الفترة", "Period")}</span>
 
           <div className="flex flex-wrap gap-1 rounded-full border border-border bg-background p-1">
             {RANGE_PRESETS.map((p) => (
@@ -140,12 +141,12 @@ export function FilterBar() {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {p.labelAr}
+                {locale === "ar" ? p.labelAr : p.labelEn}
               </button>
             ))}
             {activeRange === "custom" && (
               <span className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary shadow-brand">
-                مخصص
+                {tr("مخصص", "Custom")}
               </span>
             )}
           </div>
@@ -156,7 +157,7 @@ export function FilterBar() {
               value={fromValue}
               max={toValue || undefined}
               onChange={(e) => applyCustomDate("from", e.target.value)}
-              aria-label="من تاريخ"
+              aria-label={tr("من تاريخ", "From date")}
               className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
             />
             <span className="text-xs text-muted-foreground">—</span>
@@ -165,7 +166,7 @@ export function FilterBar() {
               value={toValue}
               min={fromValue || undefined}
               onChange={(e) => applyCustomDate("to", e.target.value)}
-              aria-label="إلى تاريخ"
+              aria-label={tr("إلى تاريخ", "To date")}
               className="cursor-pointer rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
             />
           </div>
@@ -181,13 +182,13 @@ export function FilterBar() {
             />
             <input
               defaultValue={get("search")}
-              placeholder="الاسم أو الهاتف أو رقم المحادثة"
+              placeholder={tr("الاسم أو الهاتف أو رقم المحادثة", "Name, phone, or conversation #")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") setParams({ search: (e.target as HTMLInputElement).value });
               }}
               onBlur={(e) => setParams({ search: e.target.value })}
               className="input rounded-full py-2 ps-9 text-xs"
-              aria-label="بحث"
+              aria-label={tr("بحث", "Search")}
             />
           </div>
 
@@ -201,7 +202,7 @@ export function FilterBar() {
             )}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            فلاتر
+            {tr("فلاتر", "Filters")}
             {activeCount > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-bold text-on-primary tnum">
                 {activeCount}
@@ -217,7 +218,7 @@ export function FilterBar() {
             )}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
-            فلترة
+            {tr("فلترة", "Filter")}
             {activeCount > 0 && (
               <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-2xs font-bold text-on-primary tnum">
                 {activeCount}
@@ -230,7 +231,7 @@ export function FilterBar() {
               onClick={() => router.replace(pathname, { scroll: false })}
               className="inline-flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-destructive-fg"
             >
-              <X className="h-3.5 w-3.5" /> مسح
+              <X className="h-3.5 w-3.5" /> {tr("مسح", "Clear")}
             </button>
           )}
         </div>
@@ -238,7 +239,7 @@ export function FilterBar() {
         {/* Applied filters — visible, and each one removable on its own. */}
         {activeCount > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-2xs font-bold text-muted-foreground">مُطبَّق:</span>
+            <span className="text-2xs font-bold text-muted-foreground">{tr("مُطبَّق:", "Applied:")}</span>
             {FIELDS.flatMap((f) =>
               getList(f.key).map((v) => {
                 const label = f.options.find((o) => o.value === v)?.label ?? v;
@@ -261,7 +262,7 @@ export function FilterBar() {
                 onClick={() => setParams({ needsReply: undefined })}
                 className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-destructive/30 bg-destructive/5 py-1 pe-1.5 ps-2.5 text-2xs font-semibold text-destructive-fg"
               >
-                يحتاج رد <X className="h-3 w-3" />
+                {tr("يحتاج رد", "Needs reply")} <X className="h-3 w-3" />
               </button>
             )}
             {get("search") && (
@@ -269,14 +270,14 @@ export function FilterBar() {
                 onClick={() => setParams({ search: undefined })}
                 className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-muted py-1 pe-1.5 ps-2.5 text-2xs font-semibold text-muted-foreground"
               >
-                بحث: {get("search")} <X className="h-3 w-3" />
+                {tr("بحث", "Search")}: {get("search")} <X className="h-3 w-3" />
               </button>
             )}
             <button
               onClick={() => router.replace(pathname, { scroll: false })}
               className="cursor-pointer rounded-full px-2 py-1 text-2xs font-bold text-muted-foreground underline-offset-2 transition-colors hover:text-destructive-fg hover:underline"
             >
-              مسح كل الفلاتر
+              {tr("مسح كل الفلاتر", "Clear all filters")}
             </button>
           </div>
         )}
@@ -305,16 +306,16 @@ export function FilterBar() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="فلترة"
+            aria-label={tr("فلترة", "Filter")}
             className="fixed inset-x-0 bottom-0 z-50 max-h-[85dvh] overflow-y-auto rounded-t-3xl border-t border-border bg-surface p-5 pb-8 shadow-pop"
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border" aria-hidden />
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold">فلترة</h2>
+              <h2 className="text-base font-bold">{tr("فلترة", "Filter")}</h2>
               <button
                 onClick={() => setSheet(false)}
                 className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground"
-                aria-label="إغلاق"
+                aria-label={tr("إغلاق", "Close")}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -323,7 +324,7 @@ export function FilterBar() {
             {/* Custom dates live here on mobile — no room for them in the bar. */}
             <div className="mb-3 grid grid-cols-2 gap-2.5">
               <label className="text-2xs font-semibold text-muted-foreground">
-                من
+                {tr("من", "From")}
                 <input
                   type="date"
                   value={fromValue}
@@ -333,7 +334,7 @@ export function FilterBar() {
                 />
               </label>
               <label className="text-2xs font-semibold text-muted-foreground">
-                إلى
+                {tr("إلى", "To")}
                 <input
                   type="date"
                   value={toValue}
@@ -366,10 +367,10 @@ export function FilterBar() {
                 }}
                 className="btn-ghost min-h-11 flex-1"
               >
-                مسح الكل
+                {tr("مسح الكل", "Clear all")}
               </button>
               <button onClick={() => setSheet(false)} className="btn-primary min-h-11 flex-1">
-                تطبيق
+                {tr("تطبيق", "Apply")}
               </button>
             </div>
           </div>

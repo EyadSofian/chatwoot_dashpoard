@@ -1,6 +1,8 @@
+"use client";
+
 import clsx, { type ClassValue } from "clsx";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
-import { STATUS_LABELS_AR, SLA_LABELS_AR, DEPARTMENT_LABELS_AR, type Department, type SlaState } from "@/lib/constants";
+import { useLocale, statusLabel, slaLabel, departmentLabel } from "@/lib/i18n";
 
 export function cn(...inputs: ClassValue[]): string {
   return clsx(inputs);
@@ -270,30 +272,34 @@ export function Badge({
 
 /** A dot + label pill — colour is never the only signal, the text carries it too. */
 export function StatusPill({ status }: { status: string | null | undefined }) {
+  const { locale } = useLocale();
   if (!status) return <span className="text-muted-foreground">—</span>;
   const tone = status === "open" ? "primary" : status === "resolved" ? "success" : status === "pending" ? "warning" : "muted";
-  return <Badge tone={tone as "primary"}>{STATUS_LABELS_AR[status] ?? status}</Badge>;
+  return <Badge tone={tone as "primary"}>{statusLabel(status, locale)}</Badge>;
 }
 
 export function SlaPill({ state }: { state: string | null | undefined }) {
+  const { locale } = useLocale();
   if (!state) return <span className="text-muted-foreground">—</span>;
   const tone = state === "breached" ? "danger" : state === "near_breach" ? "warning" : "success";
-  return <Badge tone={tone as "danger"}>{SLA_LABELS_AR[state as SlaState] ?? state}</Badge>;
+  return <Badge tone={tone as "danger"}>{slaLabel(state, locale)}</Badge>;
 }
 
 export function DepartmentPill({ department }: { department: string | null | undefined }) {
+  const { locale } = useLocale();
   if (!department) return <span className="text-muted-foreground">—</span>;
-  return <Badge tone="muted">{DEPARTMENT_LABELS_AR[department as Department] ?? department}</Badge>;
+  return <Badge tone="muted">{departmentLabel(department, locale)}</Badge>;
 }
 
 export function NeedsReplyDot({ value }: { value: boolean }) {
+  const { tr } = useLocale();
   return value ? (
     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-destructive-fg">
       <span className="relative flex h-1.5 w-1.5">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-60" />
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-destructive" />
       </span>
-      يحتاج رد
+      {tr("يحتاج رد", "Needs reply")}
     </span>
   ) : (
     <span className="text-xs text-muted-foreground">—</span>
@@ -328,15 +334,16 @@ export function Spinner({ className }: { className?: string }) {
     <span
       className={cn("inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent", className)}
       role="status"
-      aria-label="جارٍ التحميل"
+      aria-label="Loading"
     />
   );
 }
 
-export function LoadingBlock({ label = "جارٍ التحميل…" }: { label?: string }) {
+export function LoadingBlock({ label }: { label?: string }) {
+  const { tr } = useLocale();
   return (
     <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
-      <Spinner /> {label}
+      <Spinner /> {label ?? tr("جارٍ التحميل…", "Loading…")}
     </div>
   );
 }

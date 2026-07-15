@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import { Spinner, Badge, cn } from "@/components/ui";
 import { formatDurationShort, formatNumber, formatDateTime, formatPercent } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 interface CampaignDetail {
   job: {
@@ -28,6 +29,7 @@ interface CampaignDetail {
 }
 
 export function CampaignDrawer({ source, jobId, onClose }: { source: string; jobId: string; onClose: () => void }) {
+  const { tr } = useLocale();
   const { data, loading, error } = useApiData<CampaignDetail>(`/api/campaigns/${source}/${jobId}`);
   const j = data?.job;
 
@@ -37,10 +39,10 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
       <aside className="fixed inset-y-0 z-50 flex w-full max-w-[560px] flex-col border-e border-border bg-surface shadow-pop" style={{ left: 0 }}>
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold">{j?.originalLabelName || j?.labelName || "كامبين"}</div>
+            <div className="truncate text-sm font-bold">{j?.originalLabelName || j?.labelName || tr("كامبين", "Campaign")}</div>
             <div className="truncate text-xs text-muted-foreground">{j?.templateName || ""}</div>
           </div>
-          <button onClick={onClose} className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground cursor-pointer" aria-label="إغلاق">
+          <button onClick={onClose} className="rounded-lg border border-border p-1.5 text-muted-foreground hover:text-foreground cursor-pointer" aria-label={tr("إغلاق", "Close")}>
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -51,29 +53,29 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
           {j && (
             <>
               <div className="mb-3 rounded-lg border border-border bg-surface-2/40 p-3">
-                <div className="text-2xs text-muted-foreground">منشئ الكامبين</div>
-                <div className="text-base font-bold text-primary">{j.operatorName || "غير معروف"}</div>
+                <div className="text-2xs text-muted-foreground">{tr("منشئ الكامبين", "Created by")}</div>
+                <div className="text-base font-bold text-primary">{j.operatorName || tr("غير معروف", "Unknown")}</div>
                 <div className="mt-1 text-2xs text-muted-foreground">{formatDateTime(j.createdAtApp)} · {j.inboxName || ""}</div>
               </div>
 
               <div className="mb-4 grid grid-cols-3 gap-2 text-center">
-                <Stat label="الإجمالي" value={formatNumber(j.total)} />
-                <Stat label="مُرسل" value={formatNumber(j.sent)} tone="text-success-fg" />
-                <Stat label="فشل" value={formatNumber(j.failed)} tone="text-destructive-fg" />
-                <Stat label="متخطى" value={formatNumber(j.skipped)} />
-                <Stat label="فشل تسليم" value={formatNumber(j.deliveryFailuresCount)} tone="text-warning-fg" />
-                <Stat label="ردود" value={formatNumber(data?.replies.length ?? 0)} tone="text-primary" />
+                <Stat label={tr("الإجمالي", "Total")} value={formatNumber(j.total)} />
+                <Stat label={tr("مُرسل", "Sent")} value={formatNumber(j.sent)} tone="text-success-fg" />
+                <Stat label={tr("فشل", "Failed")} value={formatNumber(j.failed)} tone="text-destructive-fg" />
+                <Stat label={tr("متخطى", "Skipped")} value={formatNumber(j.skipped)} />
+                <Stat label={tr("فشل تسليم", "Delivery failures")} value={formatNumber(j.deliveryFailuresCount)} tone="text-warning-fg" />
+                <Stat label={tr("ردود", "Replies")} value={formatNumber(data?.replies.length ?? 0)} tone="text-primary" />
               </div>
 
-              <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">المستلمون ({formatNumber(data?.recipients.length ?? 0)})</div>
+              <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{tr("المستلمون", "Recipients")} ({formatNumber(data?.recipients.length ?? 0)})</div>
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-surface-2/50 text-2xs text-muted-foreground">
-                      <th className="px-2 py-1.5 text-start">الاسم</th>
-                      <th className="px-2 py-1.5 text-start">الهاتف</th>
-                      <th className="px-2 py-1.5 text-start">الحالة</th>
-                      <th className="px-2 py-1.5 text-start">المحادثة</th>
+                      <th className="px-2 py-1.5 text-start">{tr("الاسم", "Name")}</th>
+                      <th className="px-2 py-1.5 text-start">{tr("الهاتف", "Phone")}</th>
+                      <th className="px-2 py-1.5 text-start">{tr("الحالة", "Status")}</th>
+                      <th className="px-2 py-1.5 text-start">{tr("المحادثة", "Conversation")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -95,12 +97,12 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
 
               {(data?.replies.length ?? 0) > 0 && (
                 <>
-                  <div className="mb-2 mt-4 text-xs font-semibold uppercase text-muted-foreground">الردود ({formatNumber(data!.replies.length)})</div>
+                  <div className="mb-2 mt-4 text-xs font-semibold uppercase text-muted-foreground">{tr("الردود", "Replies")} ({formatNumber(data!.replies.length)})</div>
                   <div className="space-y-1">
                     {data!.replies.slice(0, 100).map((rep, i) => (
                       <div key={i} className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-xs">
                         <Link href={`/conversations?conv=${rep.conversationCwId}`} className="text-primary hover:underline">#{rep.conversationCwId}</Link>
-                        <span className="text-muted-foreground">{rep.assigneeName || (rep.assigned ? "مُسند" : "غير مُسند")}</span>
+                        <span className="text-muted-foreground">{rep.assigneeName || (rep.assigned ? tr("مُسند", "Assigned") : tr("غير مُسند", "Unassigned"))}</span>
                         <span className="tnum">{formatDurationShort(rep.responseSeconds)}</span>
                       </div>
                     ))}
@@ -109,7 +111,7 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
               )}
 
               <div className="mt-4 text-2xs text-muted-foreground">
-                نسبة الرد: {formatPercent(j.sent ? (data?.replies.length ?? 0) / j.sent : 0, 1)}
+                {tr("نسبة الرد", "Reply rate")}: {formatPercent(j.sent ? (data?.replies.length ?? 0) / j.sent : 0, 1)}
               </div>
             </>
           )}

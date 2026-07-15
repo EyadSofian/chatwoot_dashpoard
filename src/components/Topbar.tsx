@@ -2,34 +2,37 @@
 
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { Menu, RefreshCw } from "lucide-react";
+import { Languages, Menu, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NAV_ITEMS } from "@/lib/constants";
+import { useLocale } from "@/lib/i18n";
 import { cn } from "@/components/ui";
 
-/** One line of context under each page title — tells you what you're looking at. */
-const SUBTITLE: Record<string, string> = {
-  overview: "الأداء العام",
-  agents: "أداء الموظفين",
-  departments: "مقارنة الأقسام",
-  conversations: "كل المحادثات",
-  campaigns: "الإرسال والردود",
-  labels: "أداء التصنيفات والمقارنة بينها",
-  sla: "الخروقات والمتأخرات",
-  fahd: "تسليمات البوت للموظفين",
-  exports: "تصدير CSV بنفس الفلاتر",
-  audit: "مطابقة الأرقام مع Chatwoot",
-  settings: "الربط والمزامنة و SLA",
+/** One line of context under each page title — [ar, en]. */
+const SUBTITLE: Record<string, [string, string]> = {
+  overview: ["الأداء العام", "Overall performance"],
+  agents: ["أداء الموظفين", "Agent performance"],
+  teams: ["أداء التيمات وأعضائها", "Team & member performance"],
+  departments: ["مقارنة الأقسام", "Department comparison"],
+  conversations: ["كل المحادثات", "All conversations"],
+  campaigns: ["الإرسال والردود", "Sends & replies"],
+  labels: ["أداء التصنيفات والمقارنة بينها", "Label performance & comparison"],
+  sla: ["الخروقات والمتأخرات", "Breaches & backlog"],
+  fahd: ["تسليمات البوت للموظفين", "Bot handoffs to agents"],
+  exports: ["تصدير CSV بنفس الفلاتر", "CSV export with the same filters"],
+  audit: ["مطابقة الأرقام مع Chatwoot", "Reconcile the numbers with Chatwoot"],
+  settings: ["الربط والمزامنة و SLA", "Connection, sync & SLA"],
 };
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { locale, toggle, tr } = useLocale();
   const [spinning, setSpinning] = useState(false);
 
   const active = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
-  const title = active?.labelAr ?? "لوحة التحليلات";
-  const subtitle = active ? SUBTITLE[active.key] : undefined;
+  const title = active ? (locale === "ar" ? active.labelAr : active.labelEn) : tr("لوحة التحليلات", "Analytics");
+  const subtitle = active && SUBTITLE[active.key] ? SUBTITLE[active.key]![locale === "ar" ? 0 : 1] : undefined;
 
   const refresh = () => {
     setSpinning(true);
@@ -43,7 +46,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         <button
           onClick={onMenu}
           className="cursor-pointer rounded-xl border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
-          aria-label="فتح القائمة"
+          aria-label={tr("فتح القائمة", "Open menu")}
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -53,14 +56,23 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         </div>
       </div>
 
-      <button
-        onClick={refresh}
-        className="btn-ghost shrink-0 px-3 py-2 text-xs"
-        aria-label="تحديث البيانات"
-      >
-        <RefreshCw className={cn("h-4 w-4", spinning && "animate-spin")} />
-        <span className="hidden sm:inline">تحديث</span>
-      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        {/* Language toggle — shows the language you'd switch TO. */}
+        <button
+          onClick={toggle}
+          className="btn-ghost px-3 py-2 text-xs font-bold"
+          aria-label={tr("التبديل إلى الإنجليزية", "Switch to Arabic")}
+          title={tr("English", "العربية")}
+        >
+          <Languages className="h-4 w-4" />
+          <span>{locale === "ar" ? "EN" : "ع"}</span>
+        </button>
+
+        <button onClick={refresh} className="btn-ghost px-3 py-2 text-xs" aria-label={tr("تحديث البيانات", "Refresh")}>
+          <RefreshCw className={cn("h-4 w-4", spinning && "animate-spin")} />
+          <span className="hidden sm:inline">{tr("تحديث", "Refresh")}</span>
+        </button>
+      </div>
     </header>
   );
 }

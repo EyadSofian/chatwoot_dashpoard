@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { cn, EmptyState } from "@/components/ui";
+import { useLocale } from "@/lib/i18n";
 
 export interface Column<T> {
   key: string;
@@ -18,7 +19,7 @@ export function DataTable<T>({
   sortBy,
   sortDir,
   onSort,
-  emptyTitle = "لا توجد بيانات",
+  emptyTitle,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -29,7 +30,8 @@ export function DataTable<T>({
   onSort?: (key: string) => void;
   emptyTitle?: string;
 }) {
-  if (!rows.length) return <EmptyState title={emptyTitle} />;
+  const { tr } = useLocale();
+  if (!rows.length) return <EmptyState title={emptyTitle ?? tr("لا توجد بيانات", "No data")} />;
 
   return (
     <div className="overflow-x-auto">

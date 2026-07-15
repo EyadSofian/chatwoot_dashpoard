@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
+import { useLocale } from "@/lib/i18n";
 import { cn } from "@/components/ui";
 
 export interface Option {
@@ -31,6 +32,8 @@ export function MultiSelect({
   searchable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const { tr } = useLocale();
+  const ph = tr("بحث", "Search");
   const [query, setQuery] = useState("");
   const root = useRef<HTMLDivElement | null>(null);
 
@@ -111,7 +114,7 @@ export function MultiSelect({
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="بحث"
+                placeholder={ph}
                 className="w-full bg-transparent py-2.5 pe-3 ps-8 text-xs text-foreground outline-none placeholder:text-muted-foreground"
               />
             </div>

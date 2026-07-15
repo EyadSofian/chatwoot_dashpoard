@@ -9,6 +9,7 @@ import { Logo } from "@/components/Logo";
 import { useApiData } from "@/lib/client/api";
 import type { FilterOptions } from "@/lib/reporting/filterOptions";
 import { formatDateTime } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 import { cn } from "@/components/ui";
 
 const BY_KEY = new Map(NAV_ITEMS.map((i) => [i.key, i]));
@@ -19,6 +20,7 @@ export const SIDEBAR_WIDTH = 272;
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname = usePathname();
   const { data, error } = useApiData<FilterOptions>("/api/filters");
+  const { locale, tr } = useLocale();
   const panel = useRef<HTMLElement | null>(null);
 
   const isActive = (href: string) =>
@@ -56,7 +58,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       <aside
         ref={panel}
         tabIndex={-1}
-        aria-label="القائمة الجانبية"
+        aria-label={tr("القائمة الجانبية", "Sidebar")}
         // `fixed` at EVERY breakpoint — the rail must not scroll away with the
         // page. On desktop it is simply always visible; the shell reserves
         // SIDEBAR_WIDTH so nothing ever sits underneath it.
@@ -82,7 +84,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         {/* Only THIS scrolls, never the page */}
         <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
           {NAV_GROUPS.map((group, gi) => (
-            <div key={group.titleAr} className={cn(gi > 0 && "mt-5")}>
+            <div key={locale === "ar" ? group.titleAr : group.titleEn} className={cn(gi > 0 && "mt-5")}>
               <div className="mb-1.5 px-3 text-2xs font-bold uppercase tracking-wider text-muted-foreground/70">
                 {group.titleAr}
               </div>
@@ -112,7 +114,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                             active ? "text-on-primary" : "text-muted-foreground group-hover:text-primary",
                           )}
                         />
-                        <span className="truncate">{item.labelAr}</span>
+                        <span className="truncate">{locale === "ar" ? item.labelAr : item.labelEn}</span>
                       </Link>
                     </li>
                   );
@@ -126,7 +128,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <div className="shrink-0 border-t border-border px-5 py-4">
           <dl className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-2xs text-muted-foreground">حالة الاتصال</dt>
+              <dt className="text-2xs text-muted-foreground">{tr("حالة الاتصال", "Connection")}</dt>
               <dd className="flex items-center gap-1.5 text-2xs font-semibold">
                 <span
                   className={cn(
@@ -136,12 +138,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   aria-hidden
                 />
                 <span className={error ? "text-destructive-fg" : data ? "text-success-fg" : "text-muted-foreground"}>
-                  {error ? "منقطع" : data ? "متصل" : "جارٍ…"}
+                  {error ? tr("منقطع", "Offline") : data ? tr("متصل", "Online") : tr("جارٍ…", "…")}
                 </span>
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt className="shrink-0 text-2xs text-muted-foreground">آخر تحديث</dt>
+              <dt className="shrink-0 text-2xs text-muted-foreground">{tr("آخر تحديث", "Last sync")}</dt>
               <dd className="truncate text-2xs font-medium text-foreground">
                 {data?.metadata?.lastSyncAt ? formatDateTime(data.metadata.lastSyncAt) : "—"}
               </dd>

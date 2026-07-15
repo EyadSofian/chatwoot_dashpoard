@@ -21,10 +21,12 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { TeamDrawer } from "@/components/TeamDrawer";
 import { formatDateTime, formatDurationShort, formatNumber } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 const dash = <span className="text-muted-foreground">—</span>;
 
 export default function TeamsPage() {
+  const { tr } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -46,14 +48,14 @@ export default function TeamsPage() {
   const columns: Column<TeamRow>[] = [
     {
       key: "name",
-      header: "التيم",
+      header: tr("التيم", "Team"),
       render: (r) => (
         <div className="min-w-0">
           <div className={cn("truncate font-semibold", r.hasActivity ? "text-foreground" : "text-muted-foreground")}>
             {r.name}
           </div>
           {!r.hasActivity ? (
-            <div className="text-2xs text-muted-foreground">لا يوجد نشاط في الفترة المختارة</div>
+            <div className="text-2xs text-muted-foreground">{tr("لا يوجد نشاط في الفترة المختارة", "No activity in the selected period")}</div>
           ) : (
             r.department && <DepartmentPill department={r.department} />
           )}
@@ -61,18 +63,18 @@ export default function TeamsPage() {
       ),
     },
     // Trimmed to what you actually compare teams on. The rest lives in the sheet.
-    { key: "memberCount", header: "الأعضاء", align: "end", render: (r) => num(r.memberCount) },
+    { key: "memberCount", header: tr("الأعضاء", "Members"), align: "end", render: (r) => num(r.memberCount) },
     {
       key: "currentWorkload",
-      header: "الحمل الحالي",
+      header: tr("الحمل الحالي", "Current"),
       align: "end",
       render: (r) => <span className="tnum font-bold">{formatNumber(r.currentWorkload)}</span>,
     },
-    { key: "conversations", header: "محادثات الفترة", align: "end", render: (r) => num(r.conversations) },
-    { key: "open", header: "مفتوحة", align: "end", render: (r) => num(r.open) },
+    { key: "conversations", header: tr("محادثات الفترة", "Conversations (period)"), align: "end", render: (r) => num(r.conversations) },
+    { key: "open", header: tr("مفتوحة", "Open"), align: "end", render: (r) => num(r.open) },
     {
       key: "needsReply",
-      header: "تحتاج رد",
+      header: tr("تحتاج رد", "Needs reply"),
       align: "end",
       render: (r) => (
         <span className={cn("tnum", r.needsReply > 0 && "font-bold text-destructive-fg")}>
@@ -80,15 +82,15 @@ export default function TeamsPage() {
         </span>
       ),
     },
-    { key: "avgResponseSeconds", header: "متوسط الرد", align: "end", render: (r) => dur(r.avgResponseSeconds) },
+    { key: "avgResponseSeconds", header: tr("متوسط الرد", "Avg response"), align: "end", render: (r) => dur(r.avgResponseSeconds) },
     {
       key: "slaBreaches",
-      header: "خرق SLA",
+      header: tr("خرق SLA", "SLA breaches"),
       align: "end",
       render: (r) =>
         r.slaBreaches ? <Badge tone="danger">{formatNumber(r.slaBreaches)}</Badge> : r.hasActivity ? num(0) : dash,
     },
-    { key: "campaignReplies", header: "ردود الكامبين", align: "end", render: (r) => num(r.campaignReplies) },
+    { key: "campaignReplies", header: tr("ردود الكامبين", "Campaign replies"), align: "end", render: (r) => num(r.campaignReplies) },
   ];
 
   const s = data?.summary;
@@ -100,37 +102,37 @@ export default function TeamsPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
           <StatTile
-            label="إجمالي التيمات"
+            label={tr("إجمالي التيمات", "Total teams")}
             value={formatNumber(s?.totalTeams ?? 0)}
             icon={<UsersRound className="h-[18px] w-[18px]" />}
             tone="brand"
           />
           <StatTile
-            label="تيمات لديها نشاط"
+            label={tr("تيمات لديها نشاط", "Active teams")}
             value={formatNumber(s?.activeTeams ?? 0)}
             icon={<UserCheck className="h-[18px] w-[18px]" />}
             tone="success"
           />
           <StatTile
-            label="إجمالي المحادثات"
+            label={tr("إجمالي المحادثات", "Total conversations")}
             value={formatNumber(s?.conversations ?? 0)}
             icon={<MessagesSquare className="h-[18px] w-[18px]" />}
             tone="brand"
           />
           <StatTile
-            label="متوسط الرد العام"
+            label={tr("متوسط الرد العام", "Overall avg response")}
             value={s?.avgResponseSeconds != null ? formatDurationShort(s.avgResponseSeconds) : "—"}
             icon={<Timer className="h-[18px] w-[18px]" />}
             tone="violet"
           />
           <StatTile
-            label="خروقات SLA"
+            label={tr("خروقات SLA", "SLA breaches")}
             value={formatNumber(s?.slaBreaches ?? 0)}
             icon={<AlertTriangle className="h-[18px] w-[18px]" />}
             tone="danger"
           />
           <StatTile
-            label="محادثات تحتاج رد"
+            label={tr("محادثات تحتاج رد", "Conversations needing reply")}
             value={formatNumber(s?.needsReply ?? 0)}
             icon={<Reply className="h-[18px] w-[18px]" />}
             tone="warning"
@@ -139,8 +141,8 @@ export default function TeamsPage() {
       )}
 
       <Section
-        title="أداء كل التيمات"
-        hint="الفترة تحدد الأرقام، لا قائمة التيمات"
+        title={tr("أداء كل التيمات", "All teams performance")}
+        hint={tr("الفترة تحدد الأرقام، لا قائمة التيمات", "The period changes the numbers, not who appears")}
         action={
           <div className="flex items-center gap-3">
             <label
@@ -157,7 +159,7 @@ export default function TeamsPage() {
                 checked={activeOnly}
                 onChange={(e) => toggleActiveOnly(e.target.checked)}
               />
-              النشطة فقط
+              {tr("النشطة فقط", "Active only")}
             </label>
             <ExportButton dataset="teams" />
           </div>
@@ -181,8 +183,8 @@ export default function TeamsPage() {
                 onRowClick={(r) => (r.teamCwId === NO_TEAM_ID ? undefined : setOpenTeam(r.teamCwId))}
                 emptyTitle={
                   activeOnly
-                    ? "لا توجد تيمات نشطة في الفترة المختارة"
-                    : "لا توجد تيمات — شغِّل Sync من الإعدادات"
+                    ? tr("لا توجد تيمات نشطة في الفترة المختارة", "No active teams in the selected period")
+                    : tr("لا توجد تيمات — شغِّل Sync من الإعدادات", "No teams — run a sync from Settings")
                 }
               />
             </div>
@@ -218,7 +220,7 @@ export default function TeamsPage() {
                             </span>
                           </div>
                         </div>
-                        {r.needsReply > 0 && <Badge tone="danger">{formatNumber(r.needsReply)} تحتاج رد</Badge>}
+                        {r.needsReply > 0 && <Badge tone="danger">{formatNumber(r.needsReply)} {tr("تحتاج رد", "need reply")}</Badge>}
                       </div>
 
                       {!r.hasActivity ? (
@@ -229,15 +231,15 @@ export default function TeamsPage() {
                         <StatStrip
                           className="mt-3"
                           items={[
-                            { label: "الحمل الحالي", value: formatNumber(r.currentWorkload), tone: "brand" },
-                            { label: "محادثات الفترة", value: formatNumber(r.conversations) },
+                            { label: tr("الحمل الحالي", "Current"), value: formatNumber(r.currentWorkload), tone: "brand" },
+                            { label: tr("محادثات الفترة", "Conversations"), value: formatNumber(r.conversations) },
                             {
-                              label: "متوسط الرد",
+                              label: tr("متوسط الرد", "Avg response"),
                               value: r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—",
                               tone: "brand",
                             },
                             {
-                              label: "خرق SLA",
+                              label: tr("خرق SLA", "SLA"),
                               value: formatNumber(r.slaBreaches),
                               tone: r.slaBreaches > 0 ? "danger" : "neutral",
                             },
@@ -251,8 +253,8 @@ export default function TeamsPage() {
               {!(data?.rows ?? []).length && (
                 <li className="p-6 text-center text-sm text-muted-foreground">
                   {activeOnly
-                    ? "لا توجد تيمات نشطة في الفترة المختارة"
-                    : "لا توجد تيمات — شغِّل Sync من الإعدادات"}
+                    ? tr("لا توجد تيمات نشطة في الفترة المختارة", "No active teams in the selected period")
+                    : tr("لا توجد تيمات — شغِّل Sync من الإعدادات", "No teams — run a sync from Settings")}
                 </li>
               )}
             </ul>

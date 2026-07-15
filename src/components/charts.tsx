@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLocale } from "@/lib/i18n";
 import {
   Area,
   AreaChart,
@@ -64,6 +65,7 @@ const AXIS = {
 } as const;
 
 export function TrendChart({ data }: { data: { date: string; count: number; resolved: number }[] }) {
+  const { tr } = useLocale();
   const mounted = useMounted();
   if (!mounted) return <div className="h-[280px]" />;
   return (
@@ -86,7 +88,7 @@ export function TrendChart({ data }: { data: { date: string; count: number; reso
         <Area
           type="monotone"
           dataKey="count"
-          name="محادثات"
+          name={tr("محادثات", "Conversations")}
           stroke={CHART.brand}
           strokeWidth={2.5}
           fill="url(#gConv)"
@@ -96,7 +98,7 @@ export function TrendChart({ data }: { data: { date: string; count: number; reso
         <Area
           type="monotone"
           dataKey="resolved"
-          name="محلولة"
+          name={tr("محلولة", "Resolved")}
           stroke={CHART.emerald}
           strokeWidth={2.5}
           fill="url(#gResolved)"
@@ -109,6 +111,7 @@ export function TrendChart({ data }: { data: { date: string; count: number; reso
 }
 
 export function DeptResponseBar({ data }: { data: { department: string; avg: number }[] }) {
+  const { tr } = useLocale();
   const mounted = useMounted();
   if (!mounted) return <div className="h-[280px]" />;
   return (
@@ -117,8 +120,8 @@ export function DeptResponseBar({ data }: { data: { department: string; avg: num
         <CartesianGrid strokeDasharray="4 4" stroke={CHART.grid} horizontal={false} />
         <XAxis type="number" {...AXIS} axisLine={{ stroke: CHART.grid }} />
         <YAxis type="category" dataKey="department" {...AXIS} tick={{ ...AXIS.tick, fontSize: 12 }} axisLine={false} width={78} />
-        <Tooltip {...TOOLTIP} formatter={(v: number) => [`${Math.round(v / 60)} دقيقة`, "متوسط الرد"]} />
-        <Bar dataKey="avg" name="متوسط الرد" radius={[0, 8, 8, 0]} barSize={20}>
+        <Tooltip {...TOOLTIP} formatter={(v: number) => [`${Math.round(v / 60)} ${tr("دقيقة", "min")}`, tr("متوسط الرد", "Avg response")]} />
+        <Bar dataKey="avg" name={tr("متوسط الرد", "Avg response")} radius={[0, 8, 8, 0]} barSize={20}>
           {data.map((_, i) => (
             <Cell key={i} fill={CATEGORICAL[i % CATEGORICAL.length]} />
           ))}
@@ -129,6 +132,7 @@ export function DeptResponseBar({ data }: { data: { department: string; avg: num
 }
 
 export function DonutChart({ data }: { data: { name: string; value: number; color: string }[] }) {
+  const { tr } = useLocale();
   const mounted = useMounted();
   const total = data.reduce((s, d) => s + d.value, 0);
   if (!mounted) return <div className="h-[240px]" />;
@@ -153,7 +157,7 @@ export function DonutChart({ data }: { data: { name: string; value: number; colo
       {/* Total in the hole — the number you actually came for. */}
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-extrabold tnum text-foreground">{total}</span>
-        <span className="text-2xs text-muted-foreground">الإجمالي</span>
+        <span className="text-2xs text-muted-foreground">{tr("الإجمالي", "Total")}</span>
       </div>
     </div>
   );

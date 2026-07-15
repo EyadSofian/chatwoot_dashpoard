@@ -5,12 +5,14 @@ import { Check, CheckCircle2, XCircle, Copy, RefreshCw, Database, Megaphone } fr
 import { useApiData, apiPost } from "@/lib/client/api";
 import type { SlaSettings } from "@/lib/settings";
 import { Card, CardTitle, Spinner, Badge } from "@/components/ui";
+import { useLocale } from "@/lib/i18n";
 
 interface Health {
   config: { chatwoot: boolean; database: boolean; campaignSales: boolean; campaignOperations: boolean; webhookSecret: boolean };
 }
 
 export default function SettingsPage() {
+  const { tr } = useLocale();
   const { data: health } = useApiData<Health>("/api/health");
   const [webhookUrl, setWebhookUrl] = useState("");
 
@@ -44,6 +46,7 @@ interface MetadataState {
  * however much conversation history has been backfilled.
  */
 function MetadataSyncCard() {
+  const { tr } = useLocale();
   const { data, reload } = useApiData<MetadataState>("/api/sync/metadata");
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -59,7 +62,7 @@ function MetadataSyncCard() {
         body,
       );
       const s = res.state;
-      setResult(`${s.agents} موظف · ${s.teams} تيم · ${s.memberships} عضوية · ${s.inboxes} قناة · ${s.labels} label`);
+      setResult(`${s.agents} ${tr("موظف","agents")} · ${s.teams} ${tr("تيم","teams")} · ${s.memberships} ${tr("عضوية","memberships")} · ${s.inboxes} ${tr("قناة","inboxes")} · ${s.labels} ${tr("تصنيف","labels")}`);
       reload();
     } catch (err) {
       setError((err as Error).message);
@@ -88,12 +91,12 @@ function MetadataSyncCard() {
           </button>
         }
       >
-        Chatwoot Metadata
+        {tr("بيانات Chatwoot (الموظفون والتيمات)", "Chatwoot metadata (agents & teams)")}
       </CardTitle>
 
       {data && !data.synced && (
         <div className="mb-3 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-xs font-semibold text-warning-fg">
-          لم تُنفَّذ بعد. لن يظهر الموظفون والتيمات قبلها.
+          {tr("لم تُنفَّذ بعد. لن يظهر الموظفون والتيمات قبلها.", "Not run yet. Agents and teams will not appear until it runs.")}
         </div>
       )}
 
@@ -113,48 +116,49 @@ function MetadataSyncCard() {
       <dl className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-xl bg-surface-2 p-2.5">
           <dd className="text-lg font-bold tnum">{data?.agents ?? "—"}</dd>
-          <dt className="text-2xs text-muted-foreground">موظفون</dt>
+          <dt className="text-2xs text-muted-foreground">{tr("موظفون", "Agents")}</dt>
         </div>
         <div className="rounded-xl bg-surface-2 p-2.5">
           <dd className="text-lg font-bold tnum">{data?.teams ?? "—"}</dd>
-          <dt className="text-2xs text-muted-foreground">تيمات</dt>
+          <dt className="text-2xs text-muted-foreground">{tr("تيمات", "Teams")}</dt>
         </div>
         <div className="rounded-xl bg-surface-2 p-2.5">
           <dd className="text-xs font-bold">
             {data?.lastSyncAt ? new Date(data.lastSyncAt).toLocaleString("ar-EG") : "—"}
           </dd>
-          <dt className="text-2xs text-muted-foreground">آخر Sync</dt>
+          <dt className="text-2xs text-muted-foreground">{tr("آخر Sync", "Last sync")}</dt>
         </div>
       </dl>
 
-      {result && <p className="mt-2 text-xs font-semibold text-success-fg">تم: {result}</p>}
+      {result && <p className="mt-2 text-xs font-semibold text-success-fg">{tr("تم", "Done")}: {result}</p>}
       {error && <p className="mt-2 text-xs font-semibold text-destructive-fg">{error}</p>}
       <p className="mt-2 text-2xs text-muted-foreground">
-        يُشغِّلها Backfill تلقائيًا في البداية.
+        {tr("يُشغِّلها Backfill تلقائيًا في البداية.", "Backfill runs it automatically at the start.")}
       </p>
     </Card>
   );
 }
 
 function ConfigStatus({ health }: { health: Health | null }) {
+  const { tr } = useLocale();
   const items = [
-    { label: "قاعدة البيانات", ok: health?.config.database },
-    { label: "اتصال Chatwoot", ok: health?.config.chatwoot },
-    { label: "سر الويبهوك", ok: health?.config.webhookSecret },
-    { label: "تطبيق كامبين المبيعات", ok: health?.config.campaignSales },
-    { label: "تطبيق كامبين العمليات", ok: health?.config.campaignOperations },
+    { label: tr("قاعدة البيانات", "Database"), ok: health?.config.database },
+    { label: tr("اتصال Chatwoot", "Chatwoot connection"), ok: health?.config.chatwoot },
+    { label: tr("سر الويبهوك", "Webhook secret"), ok: health?.config.webhookSecret },
+    { label: tr("تطبيق كامبين المبيعات", "Sales campaign app"), ok: health?.config.campaignSales },
+    { label: tr("تطبيق كامبين العمليات", "Operations campaign app"), ok: health?.config.campaignOperations },
   ];
   return (
     <Card>
-      <CardTitle>حالة الإعدادات</CardTitle>
+      <CardTitle>{tr("حالة الإعدادات", "Configuration status")}</CardTitle>
       <ul className="space-y-2 text-sm">
         {items.map((i) => (
           <li key={i.label} className="flex items-center justify-between">
             <span>{i.label}</span>
             {i.ok ? (
-              <span className="inline-flex items-center gap-1 text-success-fg"><CheckCircle2 className="h-4 w-4" /> مضبوط</span>
+              <span className="inline-flex items-center gap-1 text-success-fg"><CheckCircle2 className="h-4 w-4" /> {tr("مضبوط", "Configured")}</span>
             ) : (
-              <span className="inline-flex items-center gap-1 text-muted-foreground"><XCircle className="h-4 w-4" /> غير مضبوط</span>
+              <span className="inline-flex items-center gap-1 text-muted-foreground"><XCircle className="h-4 w-4" /> {tr("غير مضبوط", "Not configured")}</span>
             )}
           </li>
         ))}
@@ -164,6 +168,7 @@ function ConfigStatus({ health }: { health: Health | null }) {
 }
 
 function ChatwootTest() {
+  const { tr } = useLocale();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ ok?: boolean; agents?: number; inboxes?: number; teams?: number; error?: string; baseUrl?: string } | null>(null);
   const run = async () => {
@@ -178,30 +183,31 @@ function ChatwootTest() {
   };
   return (
     <Card>
-      <CardTitle action={<button onClick={run} disabled={loading} className="btn-ghost text-xs">{loading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} اختبار</button>}>
-        الاتصال بـ Chatwoot
+      <CardTitle action={<button onClick={run} disabled={loading} className="btn-ghost text-xs">{loading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} {tr("اختبار", "Test")}</button>}>
+        {tr("الاتصال بـ Chatwoot", "Chatwoot connection")}
       </CardTitle>
       {result ? (
         result.ok !== false ? (
           <div className="space-y-1 text-sm">
             <div className="text-xs text-muted-foreground">{result.baseUrl}</div>
             <div className="flex gap-3">
-              <Badge tone="primary">{result.agents ?? 0} موظف</Badge>
-              <Badge tone="primary">{result.inboxes ?? 0} قناة</Badge>
-              <Badge tone="primary">{result.teams ?? 0} فريق</Badge>
+              <Badge tone="primary">{result.agents ?? 0} {tr("موظف", "agents")}</Badge>
+              <Badge tone="primary">{result.inboxes ?? 0} {tr("قناة", "inboxes")}</Badge>
+              <Badge tone="primary">{result.teams ?? 0} {tr("فريق", "teams")}</Badge>
             </div>
           </div>
         ) : (
           <div className="rounded-lg bg-destructive/10 p-2 text-xs text-destructive-fg">{result.error}</div>
         )
       ) : (
-        <p className="text-xs text-muted-foreground">اضغط اختبار للتحقق من الاتصال باستخدام متغيرات البيئة.</p>
+        <p className="text-xs text-muted-foreground">{tr("اضغط اختبار للتحقق من الاتصال باستخدام متغيرات البيئة.", "Click Test to verify the connection using the environment variables.")}</p>
       )}
     </Card>
   );
 }
 
 function CampaignTest() {
+  const { tr } = useLocale();
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState<Array<{ key: string; name: string; ok: boolean; jobs: number; error?: string }> | null>(null);
   const run = async () => {
@@ -224,27 +230,28 @@ function CampaignTest() {
             {sources.map((s) => (
               <li key={s.key} className="flex items-center justify-between">
                 <span>{s.name}</span>
-                {s.ok ? <Badge tone="success">{s.jobs} مهمة</Badge> : <Badge tone="danger">فشل</Badge>}
+                {s.ok ? <Badge tone="success">{s.jobs} مهمة</Badge> : <Badge tone="danger">{tr("فشل", "Failed")}</Badge>}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-xs text-muted-foreground">لم يتم ضبط روابط تطبيقات الكامبين.</p>
+          <p className="text-xs text-muted-foreground">{tr("لم يتم ضبط روابط تطبيقات الكامبين.", "Campaign app URLs are not configured.")}</p>
         )
       ) : (
-        <p className="text-xs text-muted-foreground">اختبر الاتصال بتطبيقي رفع الكامبينات.</p>
+        <p className="text-xs text-muted-foreground">{tr("اختبر الاتصال بتطبيقي رفع الكامبينات.", "Test the connection to the two campaign uploader apps.")}</p>
       )}
     </Card>
   );
 }
 
 function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
+  const { tr } = useLocale();
   const [copied, setCopied] = useState(false);
   const full = hasSecret ? `${url}?token=<WEBHOOK_SECRET>` : url;
   return (
     <Card>
-      <CardTitle>رابط الويبهوك</CardTitle>
-      <p className="mb-2 text-xs text-muted-foreground">أضِف هذا الرابط في Chatwoot ← الإعدادات ← Integrations ← Webhooks، واشترك في أحداث الرسائل والمحادثات.</p>
+      <CardTitle>{tr("رابط الويبهوك", "Webhook URL")}</CardTitle>
+      <p className="mb-2 text-xs text-muted-foreground">{tr("أضِف هذا الرابط في Chatwoot ← الإعدادات ← Integrations ← Webhooks، واشترك في أحداث الرسائل والمحادثات.", "Add this URL in Chatwoot → Settings → Integrations → Webhooks, and subscribe to message and conversation events.")}</p>
       <div className="flex items-center gap-2">
         <code className="flex-1 truncate rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-xs ltr-nums" dir="ltr">{full}</code>
         <button
@@ -259,6 +266,7 @@ function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
 }
 
 function BackfillCard() {
+  const { tr } = useLocale();
   const [loading, setLoading] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -267,9 +275,9 @@ function BackfillCard() {
     setMsg(null);
     try {
       const res = await apiPost<{ stats: { conversationsProcessed: number; conversationsFailed: number } }>("/api/backfill", { days });
-      setMsg(`تم جلب ${res.stats.conversationsProcessed} محادثة (${res.stats.conversationsFailed} فشل).`);
+      setMsg(`${tr("تم جلب","Fetched")} ${res.stats.conversationsProcessed} (${res.stats.conversationsFailed} ${tr("فشل","failed")})`);
     } catch (e) {
-      setMsg(`خطأ: ${(e as Error).message}`);
+      setMsg(`${tr("خطأ","Error")}: ${(e as Error).message}`);
     } finally {
       setLoading(null);
     }
@@ -279,9 +287,9 @@ function BackfillCard() {
     setMsg(null);
     try {
       const res = await apiPost<{ stats: { jobs: number; recipients: number } }>("/api/sync/campaigns");
-      setMsg(`تمت مزامنة ${res.stats.jobs} كامبين و ${res.stats.recipients} مستلم.`);
+      setMsg(`${tr("تمت مزامنة","Synced")} ${res.stats.jobs} ${tr("كامبين","campaigns")}, ${res.stats.recipients} ${tr("مستلم","recipients")}`);
     } catch (e) {
-      setMsg(`خطأ: ${(e as Error).message}`);
+      setMsg(`${tr("خطأ","Error")}: ${(e as Error).message}`);
     } finally {
       setLoading(null);
     }
@@ -289,11 +297,11 @@ function BackfillCard() {
 
   return (
     <Card>
-      <CardTitle>جلب البيانات</CardTitle>
+      <CardTitle>{tr("جلب البيانات", "Fetch data")}</CardTitle>
       <div className="mb-3 flex flex-wrap gap-2">
         {[7, 30, 60, 90].map((d) => (
           <button key={d} onClick={() => backfill(d)} disabled={loading !== null} className="btn-ghost text-xs">
-            {loading === `b${d}` ? <Spinner /> : <Database className="h-3.5 w-3.5" />} آخر {d} يوم
+            {loading === `b${d}` ? <Spinner /> : <Database className="h-3.5 w-3.5" />} {tr("آخر","Last")} {d} {tr("يوم","days")}
           </button>
         ))}
       </div>
@@ -301,12 +309,13 @@ function BackfillCard() {
         {loading === "camp" ? <Spinner /> : <Megaphone className="h-3.5 w-3.5" />} مزامنة الكامبينات
       </button>
       {msg && <div className="mt-3 rounded-lg bg-surface-2 p-2 text-xs">{msg}</div>}
-      <p className="mt-2 text-2xs text-muted-foreground">الـ Backfill يجلب المحادثات والرسائل ويعيد حساب المؤشرات. قد يستغرق دقائق للفترات الطويلة.</p>
+      <p className="mt-2 text-2xs text-muted-foreground">{tr("الـ Backfill يجلب المحادثات والرسائل ويعيد حساب المؤشرات. قد يستغرق دقائق للفترات الطويلة.", "Backfill fetches conversations and messages and recomputes the metrics. It can take minutes for long periods.")}</p>
     </Card>
   );
 }
 
 function SlaForm() {
+  const { tr } = useLocale();
   const { data } = useApiData<SlaSettings>("/api/settings/sla");
   const [form, setForm] = useState<SlaSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -316,7 +325,7 @@ function SlaForm() {
     if (data) setForm(data);
   }, [data]);
 
-  if (!form) return <Card><CardTitle>إعدادات SLA</CardTitle><Spinner /></Card>;
+  if (!form) return <Card><CardTitle>{tr("إعدادات SLA", "SLA settings")}</CardTitle><Spinner /></Card>;
 
   const save = async () => {
     setSaving(true);
@@ -330,24 +339,24 @@ function SlaForm() {
     }
   };
 
-  const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const days = [tr("الأحد","Sun"), tr("الإثنين","Mon"), tr("الثلاثاء","Tue"), tr("الأربعاء","Wed"), tr("الخميس","Thu"), tr("الجمعة","Fri"), tr("السبت","Sat")];
 
   return (
     <Card className="lg:col-span-2">
-      <CardTitle action={<button onClick={save} disabled={saving} className="btn-primary text-xs">{saving ? <Spinner /> : null} حفظ {saved ? <Check className="h-3.5 w-3.5" /> : null}</button>}>
-        إعدادات SLA وساعات العمل
+      <CardTitle action={<button onClick={save} disabled={saving} className="btn-primary text-xs">{saving ? <Spinner /> : null} {tr("حفظ", "Save")} {saved ? <Check className="h-3.5 w-3.5" /> : null}</button>}>
+        {tr("إعدادات SLA وساعات العمل", "SLA & business hours")}
       </CardTitle>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="هدف الرد الأول (دقيقة)">
+        <Field label={tr("هدف الرد الأول (دقيقة)", "First-response target (min)")}>
           <input type="number" min={1} value={form.firstResponseMinutes} onChange={(e) => setForm({ ...form, firstResponseMinutes: Number(e.target.value) })} className="input" />
         </Field>
-        <Field label="هدف الحل (ساعة)">
+        <Field label={tr("هدف الحل (ساعة)", "Resolution target (hours)")}>
           <input type="number" min={1} value={form.resolutionHours} onChange={(e) => setForm({ ...form, resolutionHours: Number(e.target.value) })} className="input" />
         </Field>
-        <Field label="المنطقة الزمنية">
+        <Field label={tr("المنطقة الزمنية", "Timezone")}>
           <input value={form.businessHours.timezone} onChange={(e) => setForm({ ...form, businessHours: { ...form.businessHours, timezone: e.target.value } })} className="input" />
         </Field>
-        <Field label="بداية / نهاية العمل">
+        <Field label={tr("بداية / نهاية العمل", "Work start / end")}>
           <div className="flex gap-2">
             <input type="time" value={form.businessHours.start} onChange={(e) => setForm({ ...form, businessHours: { ...form.businessHours, start: e.target.value } })} className="input" />
             <input type="time" value={form.businessHours.end} onChange={(e) => setForm({ ...form, businessHours: { ...form.businessHours, end: e.target.value } })} className="input" />
@@ -355,7 +364,7 @@ function SlaForm() {
         </Field>
       </div>
       <div className="mt-3">
-        <div className="mb-1.5 text-2xs text-muted-foreground">أيام العمل</div>
+        <div className="mb-1.5 text-2xs text-muted-foreground">{tr("أيام العمل", "Working days")}</div>
         <div className="flex flex-wrap gap-1.5">
           {days.map((d, idx) => {
             const active = form.businessHours.days.includes(idx);

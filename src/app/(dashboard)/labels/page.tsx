@@ -22,6 +22,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { CompareBar } from "@/components/charts";
 import { ExportButton } from "@/components/ExportButton";
 import { formatDateTime, formatDurationShort, formatNumber, formatPercent } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 const dash = <span className="text-muted-foreground">—</span>;
 
@@ -41,13 +42,13 @@ function LabelChip({ title, color }: { title: string; color: string | null }) {
 
 type Metric = "conversations" | "avgResponseSeconds" | "slaBreaches";
 
-const METRICS: { key: Metric; label: string; unit: string }[] = [
-  { key: "conversations", label: "المحادثات", unit: "" },
-  { key: "avgResponseSeconds", label: "متوسط الرد", unit: " ث" },
-  { key: "slaBreaches", label: "خرق SLA", unit: "" },
-];
-
 export default function LabelsPage() {
+  const { tr } = useLocale();
+  const METRICS: { key: Metric; label: string; unit: string }[] = [
+    { key: "conversations", label: tr("المحادثات", "Conversations"), unit: "" },
+    { key: "avgResponseSeconds", label: tr("متوسط الرد", "Avg response"), unit: tr(" ث", " s") },
+    { key: "slaBreaches", label: tr("خرق SLA", "SLA breaches"), unit: "" },
+  ];
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -88,14 +89,14 @@ export default function LabelsPage() {
       render: (r) => (
         <div className="min-w-0">
           <LabelChip title={r.title} color={r.color} />
-          {!r.hasActivity && <div className="text-2xs text-muted-foreground">لا يوجد نشاط في الفترة</div>}
+          {!r.hasActivity && <div className="text-2xs text-muted-foreground">{tr("لا يوجد نشاط في الفترة", "No activity in the period")}</div>}
         </div>
       ),
     },
-    { key: "conversations", header: "محادثات", align: "end", render: (r) => num(r.conversations) },
+    { key: "conversations", header: tr("محادثات", "Conversations"), align: "end", render: (r) => num(r.conversations) },
     {
       key: "share",
-      header: "النسبة",
+      header: tr("النسبة", "Share"),
       align: "end",
       render: (r) => (
         <div className="min-w-[80px]">
@@ -104,11 +105,11 @@ export default function LabelsPage() {
         </div>
       ),
     },
-    { key: "open", header: "مفتوحة", align: "end", render: (r) => num(r.open) },
-    { key: "resolved", header: "محلولة", align: "end", render: (r) => num(r.resolved) },
+    { key: "open", header: tr("مفتوحة", "Open"), align: "end", render: (r) => num(r.open) },
+    { key: "resolved", header: tr("محلولة", "Resolved"), align: "end", render: (r) => num(r.resolved) },
     {
       key: "needsReply",
-      header: "تحتاج رد",
+      header: tr("تحتاج رد", "Needs reply"),
       align: "end",
       render: (r) => (
         <span className={cn("tnum", r.needsReply > 0 && "font-bold text-destructive-fg")}>
@@ -116,18 +117,18 @@ export default function LabelsPage() {
         </span>
       ),
     },
-    { key: "avgResponseSeconds", header: "متوسط الرد", align: "end", render: (r) => dur(r.avgResponseSeconds) },
-    { key: "avgResolutionSeconds", header: "متوسط الإغلاق", align: "end", render: (r) => dur(r.avgResolutionSeconds) },
+    { key: "avgResponseSeconds", header: tr("متوسط الرد", "Avg response"), align: "end", render: (r) => dur(r.avgResponseSeconds) },
+    { key: "avgResolutionSeconds", header: tr("متوسط الإغلاق", "Avg resolution"), align: "end", render: (r) => dur(r.avgResolutionSeconds) },
     {
       key: "slaBreaches",
-      header: "خرق SLA",
+      header: tr("خرق SLA", "SLA breaches"),
       align: "end",
       render: (r) =>
         r.slaBreaches ? <Badge tone="danger">{formatNumber(r.slaBreaches)}</Badge> : r.hasActivity ? num(0) : dash,
     },
     {
       key: "lastActivityAt",
-      header: "آخر نشاط",
+      header: tr("آخر نشاط", "Last activity"),
       align: "end",
       render: (r) =>
         r.lastActivityAt ? (
@@ -145,32 +146,32 @@ export default function LabelsPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <StatTile
-            label="إجمالي الـ Labels"
+            label={tr("إجمالي الـ Labels", "Total labels")}
             value={formatNumber(s?.totalLabels ?? 0)}
             icon={<Tags className="h-[18px] w-[18px]" />}
             tone="brand"
           />
           <StatTile
-            label="Labels نشطة"
+            label={tr("Labels نشطة", "Active labels")}
             value={formatNumber(s?.activeLabels ?? 0)}
             icon={<Tags className="h-[18px] w-[18px]" />}
             tone="success"
           />
           <StatTile
-            label="إجمالي المحادثات"
+            label={tr("إجمالي المحادثات", "Total conversations")}
             value={formatNumber(s?.conversations ?? 0)}
             icon={<MessagesSquare className="h-[18px] w-[18px]" />}
             tone="violet"
-            sub="محادثة بعدة Labels تُحسب مرة واحدة هنا"
+            sub={tr("محادثة بعدة Labels تُحسب مرة واحدة هنا", "A conversation with several labels is counted once here")}
           />
           <StatTile
-            label="بدون Label"
+            label={tr("بدون Label", "Unlabeled")}
             value={formatNumber(s?.unlabeled ?? 0)}
             icon={<Reply className="h-[18px] w-[18px]" />}
             tone="warning"
           />
           <StatTile
-            label="متوسط الرد العام"
+            label={tr("متوسط الرد العام", "Overall avg response")}
             value={s?.avgResponseSeconds != null ? formatDurationShort(s.avgResponseSeconds) : "—"}
             icon={<Timer className="h-[18px] w-[18px]" />}
             tone="neutral"
@@ -183,8 +184,8 @@ export default function LabelsPage() {
         <CardTitle
           hint={
             selected.length
-              ? `مقارنة ${formatNumber(selected.length)} Labels مختارة`
-              : "أعلى ١٠ Labels — اختر Labels من الفلاتر للمقارنة بينها"
+              ? `${tr("مقارنة", "Comparing")} ${formatNumber(selected.length)} ${tr("Labels مختارة", "selected labels")}`
+              : tr("أعلى ١٠ Labels — اختر Labels من الفلاتر للمقارنة بينها", "Top 10 labels — pick labels from the filters to compare")
           }
           action={
             <div className="flex rounded-full border border-border bg-background p-1">
@@ -213,7 +214,7 @@ export default function LabelsPage() {
         ) : compareData.length ? (
           <CompareBar data={compareData} unit={METRICS.find((m) => m.key === metric)!.unit} />
         ) : (
-          <p className="p-8 text-center text-sm text-muted-foreground">لا يوجد نشاط لعرضه في الفترة المختارة</p>
+          <p className="p-8 text-center text-sm text-muted-foreground">{tr("لا يوجد نشاط لعرضه في الفترة المختارة", "No activity to show in the selected period")}</p>
         )}
       </Card>
 
@@ -222,13 +223,13 @@ export default function LabelsPage() {
       <div className="flex items-start gap-3 rounded-card border border-border bg-muted px-4 py-3">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <p className="text-xs text-muted-foreground">
-          المحادثة الواحدة قد تحمل أكثر من Label، لذا يُحتسب مجموع الصفوف أكثر من إجمالي المحادثات.
+          {tr("المحادثة الواحدة قد تحمل أكثر من Label، لذا يُحتسب مجموع الصفوف أكثر من إجمالي المحادثات.", "One conversation can carry several labels, so the rows sum to more than the conversation total.")}
         </p>
       </div>
 
       <Section
-        title="أداء كل الـ Labels"
-        hint="الفترة تحدد الأرقام، لا قائمة الـ Labels"
+        title={tr("أداء كل الـ Labels", "All labels performance")}
+        hint={tr("الفترة تحدد الأرقام، لا قائمة الـ Labels", "The period changes the numbers, not which labels appear")}
         action={
           <div className="flex items-center gap-3">
             <label
@@ -245,7 +246,7 @@ export default function LabelsPage() {
                 checked={activeOnly}
                 onChange={(e) => toggleActiveOnly(e.target.checked)}
               />
-              النشطة فقط
+              {tr("النشطة فقط", "Active only")}
             </label>
             <ExportButton dataset="labels" />
           </div>
@@ -266,8 +267,8 @@ export default function LabelsPage() {
                 getKey={(r) => r.title}
                 emptyTitle={
                   activeOnly
-                    ? "لا توجد Labels نشطة في الفترة المختارة"
-                    : "لا توجد Labels — شغِّل Sync من الإعدادات"
+                    ? tr("لا توجد Labels نشطة في الفترة المختارة", "No active labels in the selected period")
+                    : tr("لا توجد Labels — شغِّل Sync من الإعدادات", "No labels — run a sync from Settings")
                 }
               />
             </div>
@@ -277,27 +278,27 @@ export default function LabelsPage() {
                 <li key={r.title} className="rounded-card border border-border bg-surface p-4">
                   <div className="flex items-start justify-between gap-2">
                     <LabelChip title={r.title} color={r.color} />
-                    {r.needsReply > 0 && <Badge tone="danger">{formatNumber(r.needsReply)} تحتاج رد</Badge>}
+                    {r.needsReply > 0 && <Badge tone="danger">{formatNumber(r.needsReply)} {tr("تحتاج رد", "need reply")}</Badge>}
                   </div>
 
                   {!r.hasActivity ? (
                     <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-                      لا يوجد نشاط في الفترة المختارة
+                      {tr("لا يوجد نشاط في الفترة المختارة", "No activity in the selected period")}
                     </p>
                   ) : (
                     <>
                       <StatStrip
                         className="mt-3"
                         items={[
-                          { label: "محادثات", value: formatNumber(r.conversations) },
-                          { label: "مفتوحة", value: formatNumber(r.open) },
+                          { label: tr("محادثات", "Conversations"), value: formatNumber(r.conversations) },
+                          { label: tr("مفتوحة", "Open"), value: formatNumber(r.open) },
                           {
-                            label: "متوسط الرد",
+                            label: tr("متوسط الرد", "Avg response"),
                             value: r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—",
                             tone: "brand",
                           },
                           {
-                            label: "خرق SLA",
+                            label: tr("خرق SLA", "SLA"),
                             value: formatNumber(r.slaBreaches),
                             tone: r.slaBreaches > 0 ? "danger" : "neutral",
                           },
@@ -316,8 +317,8 @@ export default function LabelsPage() {
               {!rows.length && (
                 <li className="p-6 text-center text-sm text-muted-foreground">
                   {activeOnly
-                    ? "لا توجد Labels نشطة في الفترة المختارة"
-                    : "لا توجد Labels — شغِّل Sync من الإعدادات"}
+                    ? tr("لا توجد Labels نشطة في الفترة المختارة", "No active labels in the selected period")
+                    : tr("لا توجد Labels — شغِّل Sync من الإعدادات", "No labels — run a sync from Settings")}
                 </li>
               )}
             </ul>

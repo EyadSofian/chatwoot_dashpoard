@@ -8,6 +8,7 @@ import { useApiData } from "@/lib/client/api";
 import type { TeamMemberRow, TeamRow } from "@/lib/reporting/teams";
 import { Avatar, Badge, cn, EmptyState, MiniStat, Spinner, StatusPill } from "@/components/ui";
 import { formatDateTime, formatDurationShort, formatNumber } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 interface TeamDetail {
   team: { id: number; name: string | null; department: string | null } | null;
@@ -35,6 +36,7 @@ const dash = <span className="text-muted-foreground">—</span>;
 const dur = (v: number | null) => (v === null ? dash : <span className="tnum">{formatDurationShort(v)}</span>);
 
 export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () => void }) {
+  const { tr } = useLocale();
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const [agentFilter, setAgentFilter] = useState<number | null>(null);
@@ -61,7 +63,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
   );
 
   const row = data?.row;
-  const teamName = data?.team?.name ?? row?.name ?? `تيم #${teamId}`;
+  const teamName = data?.team?.name ?? row?.name ?? `${tr("تيم", "Team")} #${teamId}`;
 
   // Selecting a member narrows the conversation list to that agent, inside this
   // team only — an agent in two teams never drags the other team's work in.
@@ -96,14 +98,14 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
             <h2 className="truncate text-lg font-extrabold tracking-tight">{teamName}</h2>
             <p className="truncate text-xs text-muted-foreground">
               {row
-                ? `${data?.team?.department ?? row.department ?? "—"} · ${formatNumber(row.memberCount)} عضو · ${formatNumber(row.conversations)} محادثة في الفترة`
+                ? `${data?.team?.department ?? row.department ?? "—"} · ${formatNumber(row.memberCount)} ${tr("عضو", "members")} · ${formatNumber(row.conversations)} ${tr("محادثة", "conversations")}`
                 : "…"}
             </p>
           </div>
           <button
             onClick={onClose}
             className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="إغلاق"
+            aria-label={tr("إغلاق", "Close")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -121,35 +123,35 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
             <>
               {!row.hasActivity && (
                 <div className="mb-4 rounded-card border border-border bg-muted px-4 py-3 text-sm font-medium text-muted-foreground">
-                  لا يوجد نشاط في الفترة المختارة
+                  {tr("لا يوجد نشاط في الفترة المختارة", "No activity in the selected period")}
                 </div>
               )}
 
               {/* KPI cards */}
               <div className="mb-5 grid grid-cols-3 gap-2.5">
-                <MiniStat label="محادثات" value={formatNumber(row.conversations)} tone="brand" />
-                <MiniStat label="مفتوحة" value={formatNumber(row.open)} />
-                <MiniStat label="محلولة" value={formatNumber(row.resolved)} tone="success" />
-                <MiniStat label="تحتاج رد" value={formatNumber(row.needsReply)} tone="warning" />
-                <MiniStat label="خرق SLA" value={formatNumber(row.slaBreaches)} tone="danger" />
+                <MiniStat label={tr("محادثات", "Conversations")} value={formatNumber(row.conversations)} tone="brand" />
+                <MiniStat label={tr("مفتوحة", "Open")} value={formatNumber(row.open)} />
+                <MiniStat label={tr("محلولة", "Resolved")} value={formatNumber(row.resolved)} tone="success" />
+                <MiniStat label={tr("تحتاج رد", "Needs reply")} value={formatNumber(row.needsReply)} tone="warning" />
+                <MiniStat label={tr("خرق SLA", "SLA breaches")} value={formatNumber(row.slaBreaches)} tone="danger" />
                 <MiniStat
-                  label="متوسط الرد"
+                  label={tr("متوسط الرد", "Avg response")}
                   value={row.avgResponseSeconds != null ? formatDurationShort(row.avgResponseSeconds) : "—"}
                   tone="violet"
                 />
                 <MiniStat
-                  label="متوسط الإغلاق"
+                  label={tr("متوسط الإغلاق", "Avg resolution")}
                   value={row.avgResolutionSeconds != null ? formatDurationShort(row.avgResolutionSeconds) : "—"}
                 />
-                <MiniStat label="ردود كامبين" value={formatNumber(row.campaignReplies)} tone="brand" />
-                <MiniStat label="تسليمات فهد" value={formatNumber(row.botHandoffs)} tone="violet" />
+                <MiniStat label={tr("ردود كامبين", "Campaign replies")} value={formatNumber(row.campaignReplies)} tone="brand" />
+                <MiniStat label={tr("تسليمات فهد", "Fahd handoffs")} value={formatNumber(row.botHandoffs)} tone="violet" />
               </div>
 
               {/* Members */}
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 className="text-sm font-bold">أعضاء التيم</h3>
+                <h3 className="text-sm font-bold">{tr("أعضاء التيم", "Team members")}</h3>
                 <a href={exportQs("team-members")} className="btn-ghost rounded-full px-3 py-1.5 text-2xs">
-                  تصدير الأعضاء
+                  {tr("تصدير الأعضاء", "Export members")}
                 </a>
               </div>
 
@@ -159,7 +161,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                 work INSIDE this team.
               */}
               {data.members.length === 0 ? (
-                <EmptyState title="لا يوجد أعضاء" hint="شغِّل Sync من الإعدادات" />
+                <EmptyState title={tr("لا يوجد أعضاء", "No members")} hint={tr("شغِّل Sync من الإعدادات", "Run a sync from Settings")} />
               ) : (
                 <ul className="mb-6 space-y-2">
                   {data.members.map((m) => {
@@ -188,7 +190,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                                 {m.name}
                               </div>
                               {!m.hasActivity && (
-                                <div className="text-2xs text-muted-foreground">لا نشاط في الفترة</div>
+                                <div className="text-2xs text-muted-foreground">{tr("لا نشاط في الفترة", "No activity in the period")}</div>
                               )}
                             </div>
                             {m.slaBreaches > 0 && <Badge tone="danger">{formatNumber(m.slaBreaches)} خرق</Badge>}
@@ -231,18 +233,18 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
               {/* Conversations */}
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h3 className="text-sm font-bold">
-                  محادثات التيم
+                  {tr("محادثات التيم", "Team conversations")}
                   {agentFilter && (
                     <button
                       onClick={() => setAgentFilter(null)}
                       className="ms-2 cursor-pointer text-2xs font-semibold text-primary hover:underline"
                     >
-                      (إلغاء تصفية الموظف)
+                      {tr("(إلغاء تصفية الموظف)", "(clear agent filter)")}
                     </button>
                   )}
                 </h3>
                 <a href={exportQs("team-conversations")} className="btn-ghost rounded-full px-3 py-1.5 text-2xs">
-                  تصدير المحادثات
+                  {tr("تصدير المحادثات", "Export conversations")}
                 </a>
               </div>
 
@@ -251,7 +253,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                   <Spinner />
                 </div>
               ) : visibleConvs.length === 0 ? (
-                <EmptyState title="لا توجد محادثات في الفترة" />
+                <EmptyState title={tr("لا توجد محادثات في الفترة", "No conversations in the period")} />
               ) : (
                 <>
                   <ul className="space-y-2">
@@ -267,7 +269,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                           <StatusPill status={c.status} />
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
-                          <span>{c.assigneeName || "غير مُسند"}</span>
+                          <span>{c.assigneeName || tr("غير مُسند", "Unassigned")}</span>
                           <span>زمن الرد: {c.responseSeconds != null ? formatDurationShort(c.responseSeconds) : "—"}</span>
                           {c.lastMessageAt && <span>{formatDateTime(c.lastMessageAt)}</span>}
                           {c.needsReply && <span className="font-bold text-destructive-fg">يحتاج رد</span>}

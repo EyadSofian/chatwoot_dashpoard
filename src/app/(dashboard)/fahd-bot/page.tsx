@@ -7,9 +7,11 @@ import { Kpi, Card, CardTitle, Section, LoadingBlock, ErrorState, DepartmentPill
 import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
 import { formatDurationShort, formatNumber } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 import { DEPARTMENT_LABELS_AR, type Department } from "@/lib/constants";
 
 export default function FahdPage() {
+  const { tr } = useLocale();
   const { data, loading, error } = useApiData<FahdResult>("/api/fahd");
 
   if (loading) return <LoadingBlock />;
@@ -17,21 +19,21 @@ export default function FahdPage() {
   if (!data) return null;
 
   const noReplyCols: Column<FahdResult["noReplyList"][number]>[] = [
-    { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
-    { key: "department", header: "القسم المُوجَّه", render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "handoffAt", header: "وقت التحويل", render: (r) => <span className="text-xs text-muted-foreground">{new Date(r.handoffAt).toLocaleString("ar-EG")}</span> },
-    { key: "status", header: "الحالة", render: (r) => <StatusPill status={r.status} /> },
+    { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
+    { key: "department", header: tr("القسم المُوجَّه", "Routed department"), render: (r) => <DepartmentPill department={r.department} /> },
+    { key: "handoffAt", header: tr("وقت التحويل", "Handoff time"), render: (r) => <span className="text-xs text-muted-foreground">{new Date(r.handoffAt).toLocaleString("ar-EG")}</span> },
+    { key: "status", header: tr("الحالة", "Status"), render: (r) => <StatusPill status={r.status} /> },
   ];
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Kpi label="إجمالي التحويلات" value={formatNumber(data.totalHandoffs)} />
-        <Kpi label="دخول بعد الحل" value={formatNumber(data.resolvedReentries)} />
-        <Kpi label="في الطابور" value={formatNumber(data.queuedUnassigned)} tone="warning" />
-        <Kpi label="حصلت على رد" value={formatNumber(data.gotAgentReply)} tone="success" />
-        <Kpi label="بدون رد موظف" value={formatNumber(data.noAgentReply)} tone="danger" />
-        <Kpi label="متوسط فهد ← رد" value={formatDurationShort(data.avgHandoffToReplySeconds)} />
+        <Kpi label={tr("إجمالي التحويلات", "Total handoffs")} value={formatNumber(data.totalHandoffs)} />
+        <Kpi label={tr("دخول بعد الحل", "Reopened after resolve")} value={formatNumber(data.resolvedReentries)} />
+        <Kpi label={tr("في الطابور", "In queue")} value={formatNumber(data.queuedUnassigned)} tone="warning" />
+        <Kpi label={tr("حصلت على رد", "Got a reply")} value={formatNumber(data.gotAgentReply)} tone="success" />
+        <Kpi label={tr("بدون رد موظف", "No agent reply")} value={formatNumber(data.noAgentReply)} tone="danger" />
+        <Kpi label={tr("متوسط فهد ← رد", "Avg Fahd → reply")} value={formatDurationShort(data.avgHandoffToReplySeconds)} />
       </div>
 
       <Card>
@@ -47,8 +49,8 @@ export default function FahdPage() {
         </div>
       </Card>
 
-      <Section title="فهد حوّلها ولم يرد عليها موظف" action={<ExportButton dataset="fahd" />}>
-        <DataTable columns={noReplyCols} rows={data.noReplyList} getKey={(r) => r.chatwootId} emptyTitle="لا توجد محادثات بدون رد" />
+      <Section title={tr("فهد حوّلها ولم يرد عليها موظف", "Fahd handed off, no agent replied")} action={<ExportButton dataset="fahd" />}>
+        <DataTable columns={noReplyCols} rows={data.noReplyList} getKey={(r) => r.chatwootId} emptyTitle={tr("لا توجد محادثات بدون رد", "No unanswered conversations")} />
       </Section>
     </div>
   );

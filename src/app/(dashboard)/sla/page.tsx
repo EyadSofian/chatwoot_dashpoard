@@ -9,8 +9,10 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { DonutChart, CHART } from "@/components/charts";
 import { ExportButton } from "@/components/ExportButton";
 import { formatDurationShort, formatNumber } from "@/lib/format";
+import { useLocale } from "@/lib/i18n";
 
 export default function SlaPage() {
+  const { tr } = useLocale();
   const { data, loading, error } = useApiData<SlaResult & { settings: SlaSettings }>("/api/sla");
 
   if (loading) return <LoadingBlock />;
@@ -24,25 +26,25 @@ export default function SlaPage() {
   ];
 
   const breachCols: Column<SlaResult["breachedList"][number]>[] = [
-    { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
-    { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
-    { key: "department", header: "القسم", render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "responseSeconds", header: "زمن الرد", render: (r) => <span className="tnum text-destructive-fg">{formatDurationShort(r.responseSeconds)}</span> },
-    { key: "status", header: "الحالة", render: (r) => <StatusPill status={r.status} /> },
+    { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
+    { key: "assigneeName", header: tr("الموظف", "Agent"), render: (r) => r.assigneeName || "—" },
+    { key: "department", header: tr("القسم", "Department"), render: (r) => <DepartmentPill department={r.department} /> },
+    { key: "responseSeconds", header: tr("زمن الرد", "Response time"), render: (r) => <span className="tnum text-destructive-fg">{formatDurationShort(r.responseSeconds)}</span> },
+    { key: "status", header: tr("الحالة", "Status"), render: (r) => <StatusPill status={r.status} /> },
   ];
   const nearCols: Column<SlaResult["nearBreachList"][number]>[] = [
     { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
     { key: "department", header: "القسم", render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "waitingSeconds", header: "مدة الانتظار", render: (r) => <span className="tnum text-warning-fg">{formatDurationShort(r.waitingSeconds)}</span> },
+    { key: "waitingSeconds", header: tr("مدة الانتظار", "Waiting time"), render: (r) => <span className="tnum text-warning-fg">{formatDurationShort(r.waitingSeconds)}</span> },
   ];
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
-        <Kpi label="خرق SLA (الرد الأول)" value={formatNumber(data.firstResponse.breached)} tone="danger" />
-        <Kpi label="قريبة من الخرق" value={formatNumber(data.firstResponse.nearBreach)} tone="warning" />
-        <Kpi label="سليمة" value={formatNumber(data.firstResponse.healthy)} tone="success" />
+        <Kpi label={tr("خرق SLA (الرد الأول)", "SLA breaches (first response)")} value={formatNumber(data.firstResponse.breached)} tone="danger" />
+        <Kpi label={tr("قريبة من الخرق", "Near breach")} value={formatNumber(data.firstResponse.nearBreach)} tone="warning" />
+        <Kpi label={tr("سليمة", "Healthy")} value={formatNumber(data.firstResponse.healthy)} tone="success" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -53,10 +55,10 @@ export default function SlaPage() {
         <Card className="lg:col-span-2">
           <CardTitle>الأهداف الحالية</CardTitle>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Target label="هدف الرد الأول" value={`${formatNumber(data.settings.firstResponseMinutes)} دقيقة`} />
-            <Target label="هدف الحل" value={`${formatNumber(data.settings.resolutionHours)} ساعة`} />
-            <Target label="المنطقة الزمنية" value={data.settings.businessHours.timezone} />
-            <Target label="ساعات العمل" value={`${data.settings.businessHours.start}–${data.settings.businessHours.end}`} />
+            <Target label={tr("هدف الرد الأول", "First-response target")} value={`${formatNumber(data.settings.firstResponseMinutes)} دقيقة`} />
+            <Target label={tr("هدف الحل", "Resolution target")} value={`${formatNumber(data.settings.resolutionHours)} ساعة`} />
+            <Target label={tr("المنطقة الزمنية", "Timezone")} value={data.settings.businessHours.timezone} />
+            <Target label={tr("ساعات العمل", "Business hours")} value={`${data.settings.businessHours.start}–${data.settings.businessHours.end}`} />
           </div>
           <div className="mt-4 text-xs text-muted-foreground">
             لتعديل الأهداف انتقل إلى <Link href="/settings" className="text-primary hover:underline">الإعدادات</Link>.
@@ -69,11 +71,11 @@ export default function SlaPage() {
         </Card>
       </div>
 
-      <Section title="محادثات خارقة للـ SLA" action={<ExportButton dataset="sla" />}>
-        <DataTable columns={breachCols} rows={data.breachedList} getKey={(r) => r.chatwootId} emptyTitle="لا يوجد خرق" />
+      <Section title={tr("محادثات خارقة للـ SLA", "SLA-breaching conversations")} action={<ExportButton dataset="sla" />}>
+        <DataTable columns={breachCols} rows={data.breachedList} getKey={(r) => r.chatwootId} emptyTitle={tr("لا يوجد خرق", "No breaches")} />
       </Section>
-      <Section title="قريبة من الخرق">
-        <DataTable columns={nearCols} rows={data.nearBreachList} getKey={(r) => r.chatwootId} emptyTitle="لا توجد محادثات قريبة من الخرق" />
+      <Section title={tr("قريبة من الخرق", "Near breach")}>
+        <DataTable columns={nearCols} rows={data.nearBreachList} getKey={(r) => r.chatwootId} emptyTitle={tr("لا توجد محادثات قريبة من الخرق", "No conversations near breach")} />
       </Section>
     </div>
   );

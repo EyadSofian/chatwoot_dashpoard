@@ -17,13 +17,13 @@ import { fromZonedTime, toZonedTime } from "date-fns-tz";
 export const REPORT_TIMEZONE = "Africa/Cairo";
 
 export const RANGE_PRESETS = [
-  { key: "today", labelAr: "اليوم" },
-  { key: "7d", labelAr: "٧ أيام" },
-  { key: "30d", labelAr: "٣٠ يوم" },
-  { key: "60d", labelAr: "٦٠ يوم" },
-  { key: "90d", labelAr: "٩٠ يوم" },
-  { key: "this_month", labelAr: "الشهر الحالي" },
-  { key: "last_month", labelAr: "الشهر الماضي" },
+  { key: "today", labelAr: "اليوم", labelEn: "Today" },
+  { key: "7d", labelAr: "٧ أيام", labelEn: "7 days" },
+  { key: "30d", labelAr: "٣٠ يوم", labelEn: "30 days" },
+  { key: "60d", labelAr: "٦٠ يوم", labelEn: "60 days" },
+  { key: "90d", labelAr: "٩٠ يوم", labelEn: "90 days" },
+  { key: "this_month", labelAr: "الشهر الحالي", labelEn: "This month" },
+  { key: "last_month", labelAr: "الشهر الماضي", labelEn: "Last month" },
 ] as const;
 
 export type RangeKey = (typeof RANGE_PRESETS)[number]["key"];
