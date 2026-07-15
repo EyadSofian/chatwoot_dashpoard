@@ -267,6 +267,42 @@ expose it). Those conversations get a single assignment interval from creation.
 
 ---
 
+## Self-healing drift repair
+
+The dashboard is a **mirror** of Chatwoot, kept fresh by webhooks. Any missed
+delivery (webhook added late, app redeploy, Chatwoot retry exhausted) leaves
+rows stale: a conversation reassigned in Chatwoot still shows the old agent,
+and that agent's current workload counts it. Two mechanisms fix this:
+
+1. **Heal on touch** — every webhook event (including `message_created`)
+   re-fetches the full conversation from Chatwoot and upserts it, so any drift
+   on an *active* conversation disappears with its next event.
+2. **Reconcile sweep** — `POST /api/audit/reconcile-current-workload` pages
+   Chatwoot's open/pending/snoozed lists, diffs them against the mirror
+   (missing rows, different assignee, different status, phantom-active rows),
+   and re-ingests every mismatch. The **Accuracy Audit** page has a one-click
+   button that loops until the diff is empty.
+
+Schedule both so drift never accumulates (Railway Cron or any scheduler):
+
+```bash
+# nightly at 03:00 — refresh the last 2 days of history
+curl -X POST https://<your-app>/api/backfill \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"days": 2, "scope": "recent"}'
+
+# nightly at 03:30 — repair any assignee/status drift on active conversations
+curl -X POST https://<your-app>/api/audit/reconcile-current-workload \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+If **Last webhook** in the sidebar (or the red banner on the Webhook card in
+Settings) says no event has ever arrived, the webhook is not connected — fix
+that first; no amount of reconciling keeps up with a dead webhook.
+
+---
+
 ## Campaign apps integration
 
 The two uploader apps (`chatwoot-campain-uploder`, one Sales, one Operations)
@@ -317,8 +353,9 @@ recompute; the env vars only seed the initial values.
 
 ## API
 
-All report routes require a session cookie. `/api/backfill` and
-`/api/sync/campaigns` accept a session **or** `Authorization: Bearer $CRON_SECRET`.
+All report routes require a session cookie. `/api/backfill`,
+`/api/sync/campaigns`, and `/api/audit/reconcile-current-workload` accept a
+session **or** `Authorization: Bearer $CRON_SECRET`.
 
 | Route | Method | |
 | --- | --- | --- |
@@ -326,6 +363,8 @@ All report routes require a session cookie. `/api/backfill` and
 | `/api/webhooks/chatwoot` | POST | Chatwoot webhook ingestion (secret-authenticated) |
 | `/api/backfill` | POST | Load history from the Chatwoot API |
 | `/api/sync/campaigns` | POST | Pull jobs from both campaign apps |
+| `/api/audit/agents` | GET | Live Chatwoot-vs-dashboard workload diff per agent |
+| `/api/audit/reconcile-current-workload` | POST | Re-ingest every conversation whose assignee/status disagrees with Chatwoot |
 | `/api/overview` | GET | Overview KPIs and trend |
 | `/api/agents`, `/api/agents/:id` | GET | Per-agent report and detail |
 | `/api/departments` | GET | Per-department report |

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, CheckCircle2, XCircle, Copy, RefreshCw, Database, Megaphone } from "lucide-react";
 import { useApiData, apiPost } from "@/lib/client/api";
 import type { SlaSettings } from "@/lib/settings";
+import type { FilterOptions } from "@/lib/reporting/filterOptions";
 import { Card, CardTitle, Spinner, Badge } from "@/components/ui";
 import { useLocale } from "@/lib/i18n";
 import { formatDateTime } from "@/lib/format";
@@ -15,6 +16,7 @@ interface Health {
 export default function SettingsPage() {
   const { tr } = useLocale();
   const { data: health } = useApiData<Health>("/api/health");
+  const { data: filters } = useApiData<FilterOptions>("/api/filters");
   const [webhookUrl, setWebhookUrl] = useState("");
 
   useEffect(() => {
@@ -26,7 +28,11 @@ export default function SettingsPage() {
       <ConfigStatus health={health} />
       <ChatwootTest />
       <CampaignTest />
-      <WebhookCard url={webhookUrl} hasSecret={health?.config.webhookSecret ?? false} />
+      <WebhookCard
+        url={webhookUrl}
+        hasSecret={health?.config.webhookSecret ?? false}
+        lastWebhookAt={filters ? (filters.metadata?.lastWebhookAt ?? null) : undefined}
+      />
       <MetadataSyncCard />
       <BackfillCard />
       <SlaForm />
@@ -245,7 +251,16 @@ function CampaignTest() {
   );
 }
 
-function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
+function WebhookCard({
+  url,
+  hasSecret,
+  lastWebhookAt,
+}: {
+  url: string;
+  hasSecret: boolean;
+  /** undefined = still loading; null = never received; string = last delivery. */
+  lastWebhookAt: string | null | undefined;
+}) {
   const { tr } = useLocale();
   const [copied, setCopied] = useState(false);
   const copyLabel = copied ? tr("تم", "Copied") : tr("نسخ", "Copy");
@@ -254,6 +269,20 @@ function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
     <Card>
       <CardTitle>{tr("رابط الويبهوك", "Webhook URL")}</CardTitle>
       <p className="mb-2 text-xs text-muted-foreground">{tr("أضِف هذا الرابط في Chatwoot ← الإعدادات ← Integrations ← Webhooks، واشترك في أحداث الرسائل والمحادثات.", "Add this URL in Chatwoot → Settings → Integrations → Webhooks, and subscribe to message and conversation events.")}</p>
+      {lastWebhookAt !== undefined && (
+        <div
+          className={`mb-2 rounded-lg px-3 py-2 text-xs font-semibold ${
+            lastWebhookAt ? "bg-success/10 text-success-fg" : "bg-destructive/10 text-destructive-fg"
+          }`}
+        >
+          {lastWebhookAt
+            ? `${tr("متصل — آخر حدث وصل", "Receiving — last event")}: ${formatDateTime(lastWebhookAt)}`
+            : tr(
+                "لم يصل أي حدث من Chatwoot إطلاقًا. بدون الويبهوك تتقادم الإسنادات والحالات فورًا — أضِف الرابط أدناه في Chatwoot الآن.",
+                "No Chatwoot event has ever arrived. Without the webhook, assignments and statuses go stale immediately — add the URL below in Chatwoot now.",
+              )}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <code className="flex-1 truncate rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-xs ltr-nums" dir="ltr">{full}</code>
         <button

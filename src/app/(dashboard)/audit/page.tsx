@@ -110,17 +110,32 @@ export default function AuditPage() {
     setReconciling(true);
     setReconcileResult(null);
     try {
-      const res = await apiPost<{
-        stats: { mismatched: number; reIngested: number; failed: number; remaining: number };
-      }>("/api/audit/reconcile-current-workload", {});
-      const st = res.stats;
-      const parts = [
-        `${tr("تمت إعادة استيراد", "Re-ingested")} ${formatNumber(st.reIngested)} / ${formatNumber(st.mismatched)} ${tr("غير مطابِقة", "mismatched")}`,
-      ];
-      if (st.failed) parts.push(`${tr("فشل", "failed")} ${formatNumber(st.failed)}`);
-      // Honest about a partial pass — re-running finishes it (it is idempotent).
-      if (st.remaining) parts.push(`${tr("متبقٍ", "remaining")} ${formatNumber(st.remaining)} — ${tr("أعد التشغيل لإكمالها", "run again to finish")}`);
-      else if (!st.failed) parts.push(tr("مطابَقة كاملة ✓", "fully reconciled ✓"));
+      // Each pass is idempotent and capped server-side, so loop until Chatwoot
+      // and the mirror agree instead of asking the user to keep clicking.
+      let reIngested = 0;
+      let failed = 0;
+      let last = { mismatched: 0, remaining: 0 };
+      const MAX_ROUNDS = 20;
+      for (let round = 1; round <= MAX_ROUNDS; round++) {
+        const res = await apiPost<{
+          stats: { mismatched: number; reIngested: number; failed: number; remaining: number };
+        }>("/api/audit/reconcile-current-workload", {});
+        const st = res.stats;
+        reIngested += st.reIngested;
+        failed += st.failed;
+        last = { mismatched: st.mismatched, remaining: st.remaining };
+        if (!st.remaining) break;
+        // Nothing progressed but work remains (e.g. Chatwoot erroring) — stop
+        // rather than spin.
+        if (!st.reIngested) break;
+        setReconcileResult(
+          `${tr("جولة", "Round")} ${round}: ${formatNumber(reIngested)} ${tr("أُصلحت", "repaired")} · ${formatNumber(st.remaining)} ${tr("متبقية…", "remaining…")}`,
+        );
+      }
+      const parts = [`${tr("تمت إعادة استيراد", "Re-ingested")} ${formatNumber(reIngested)}`];
+      if (failed) parts.push(`${tr("فشل", "failed")} ${formatNumber(failed)}`);
+      if (last.remaining) parts.push(`${tr("متبقٍ", "remaining")} ${formatNumber(last.remaining)} — ${tr("أعد التشغيل لإكمالها", "run again to finish")}`);
+      else if (!failed) parts.push(tr("مطابَقة كاملة ✓", "fully reconciled ✓"));
       setReconcileResult(parts.join(" · "));
       reload();
     } catch (err) {

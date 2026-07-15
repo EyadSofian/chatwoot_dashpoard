@@ -148,6 +148,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 {data?.metadata?.lastSyncAt ? formatDateTime(data.metadata.lastSyncAt) : "—"}
               </dd>
             </div>
+            <div className="flex items-center justify-between gap-2">
+              <dt className="shrink-0 text-2xs text-muted-foreground">{tr("آخر Webhook", "Last webhook")}</dt>
+              <dd
+                className={cn(
+                  "truncate text-2xs font-medium",
+                  data && !data.metadata?.lastWebhookAt ? "text-destructive-fg" : "text-foreground",
+                )}
+              >
+                {data
+                  ? data.metadata?.lastWebhookAt
+                    ? formatDateTime(data.metadata.lastWebhookAt)
+                    : tr("لم يصل أي حدث", "never received")
+                  : "—"}
+              </dd>
+            </div>
           </dl>
           <p className="mt-3 text-2xs text-muted-foreground">Engosoft · {new Date().getFullYear()}</p>
         </div>

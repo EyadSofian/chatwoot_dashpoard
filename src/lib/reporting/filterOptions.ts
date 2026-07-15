@@ -10,11 +10,19 @@ export interface FilterOptions {
   labels: { title: string; color: string | null }[];
   departments: string[];
   /** Never synced ⇒ the agent/team rosters are empty and the UI must say so. */
-  metadata: { synced: boolean; lastSyncAt: string | null; agents: number; teams: number };
+  metadata: {
+    synced: boolean;
+    lastSyncAt: string | null;
+    agents: number;
+    teams: number;
+    /** Latest Chatwoot webhook delivery. null = the webhook has NEVER reached
+     *  this app — the mirror can only go stale until it is connected. */
+    lastWebhookAt: string | null;
+  };
 }
 
 export async function getFilterOptions(): Promise<FilterOptions> {
-  const [agents, teams, inboxes, campaignLabels, labels, metadata] = await Promise.all([
+  const [agents, teams, inboxes, campaignLabels, labels, metadata, lastWebhook] = await Promise.all([
     prisma.agent.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, department: true } }),
     prisma.inbox.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -25,6 +33,11 @@ export async function getFilterOptions(): Promise<FilterOptions> {
     }),
     prisma.label.findMany({ orderBy: { title: "asc" }, select: { title: true, color: true } }),
     getMetadataSyncState(),
+    prisma.rawEvent.findFirst({
+      where: { source: "chatwoot_webhook" },
+      orderBy: { receivedAt: "desc" },
+      select: { receivedAt: true },
+    }),
   ]);
 
   return {
@@ -39,6 +52,7 @@ export async function getFilterOptions(): Promise<FilterOptions> {
       lastSyncAt: metadata.lastSyncAt,
       agents: metadata.agents,
       teams: metadata.teams,
+      lastWebhookAt: lastWebhook?.receivedAt?.toISOString() ?? null,
     },
   };
 }
