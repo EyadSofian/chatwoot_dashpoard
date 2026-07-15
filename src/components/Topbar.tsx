@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { Languages, Menu, RefreshCw } from "lucide-react";
+import { Menu, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { NAV_ITEMS } from "@/lib/constants";
 import { useLocale } from "@/lib/i18n";
@@ -27,7 +27,7 @@ const SUBTITLE: Record<string, [string, string]> = {
 export function Topbar({ onMenu }: { onMenu: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { locale, toggle, tr } = useLocale();
+  const { locale, tr } = useLocale();
   const [spinning, setSpinning] = useState(false);
 
   const active = NAV_ITEMS.find((i) => (i.href === "/" ? pathname === "/" : pathname.startsWith(i.href)));
@@ -36,6 +36,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
   const refresh = () => {
     setSpinning(true);
+    window.dispatchEvent(new Event("dashboard:refresh"));
     router.refresh();
     window.setTimeout(() => setSpinning(false), 600);
   };
@@ -57,17 +58,6 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        {/* Language toggle — shows the language you'd switch TO. */}
-        <button
-          onClick={toggle}
-          className="btn-ghost px-3 py-2 text-xs font-bold"
-          aria-label={tr("التبديل إلى الإنجليزية", "Switch to Arabic")}
-          title={tr("English", "العربية")}
-        >
-          <Languages className="h-4 w-4" />
-          <span>{locale === "ar" ? "EN" : "ع"}</span>
-        </button>
-
         <button onClick={refresh} className="btn-ghost px-3 py-2 text-xs" aria-label={tr("تحديث البيانات", "Refresh")}>
           <RefreshCw className={cn("h-4 w-4", spinning && "animate-spin")} />
           <span className="hidden sm:inline">{tr("تحديث", "Refresh")}</span>

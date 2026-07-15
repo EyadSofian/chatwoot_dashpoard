@@ -1,7 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { average } from "@/lib/format";
 import { DEPARTMENTS, type Department } from "@/lib/constants";
 import { conversationWhere, type ReportFilters } from "./filters";
+import { andSql, conversationSqlConditions } from "./sqlFilters";
 
 export interface DepartmentRow {
   department: Department;
@@ -25,67 +26,91 @@ export interface DepartmentsResult {
 }
 
 export async function getDepartments(f: ReportFilters): Promise<DepartmentsResult> {
-  const where = conversationWhere({ ...f, department: undefined });
-  const rows = await prisma.conversation.findMany({
-    where,
-    select: {
-      chatwootId: true,
-      department: true,
-      status: true,
-      needsReply: true,
-      assigneeName: true,
-      assignedAt: true,
-      createdAtCw: true,
-      contactName: true,
-      responseSeconds: true,
-      conversationDurationSeconds: true,
-      slaFirstResponseBreached: true,
-    },
-    take: 40000,
-  });
+  const scoped = { ...f, department: undefined };
+  const where = conversationWhere(scoped);
+  const conditions = conversationSqlConditions(scoped, { alias: "c" });
+  const activeStatuses = ["open", "pending", "snoozed"].filter(
+    (status) => !f.status?.length || f.status.includes(status),
+  );
 
-  const buckets = new Map<string, { resp: number[]; res: number[]; volume: number; open: number; unresolved: number; sla: number }>();
-  for (const dep of DEPARTMENTS) buckets.set(dep, { resp: [], res: [], volume: 0, open: 0, unresolved: 0, sla: 0 });
+  const [aggregates, delayed] = await Promise.all([
+    prisma.$queryRaw<DepartmentAggregate[]>(Prisma.sql`
+      SELECT
+        COALESCE(c."department", 'unknown') AS "department",
+        COUNT(*)::bigint AS "volume",
+        AVG(c."responseSeconds")::double precision AS "avgResponseSeconds",
+        AVG(c."conversationDurationSeconds")::double precision AS "avgResolutionSeconds",
+        COUNT(*) FILTER (WHERE c."status" = 'open')::bigint AS "open",
+        COUNT(*) FILTER (WHERE c."status" IS DISTINCT FROM 'resolved')::bigint AS "unresolved",
+        COUNT(*) FILTER (WHERE c."slaFirstResponseBreached" = TRUE)::bigint AS "slaBreaches"
+      FROM "conversations" c
+      ${andSql(conditions)}
+      GROUP BY COALESCE(c."department", 'unknown')
+    `),
+    activeStatuses.length
+      ? prisma.conversation.findMany({
+          where: { ...where, status: { in: activeStatuses }, needsReply: true },
+          orderBy: [{ assignedAt: "asc" }, { createdAtCw: "asc" }],
+          take: 15,
+          select: {
+            chatwootId: true,
+            contactName: true,
+            department: true,
+            assigneeName: true,
+            assignedAt: true,
+            createdAtCw: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
 
-  for (const r of rows) {
-    const dep = (r.department as Department) ?? "unknown";
-    const b = buckets.get(dep) ?? buckets.get("unknown")!;
-    b.volume++;
-    if (r.status === "open") b.open++;
-    if (r.status !== "resolved") b.unresolved++;
-    if (r.slaFirstResponseBreached) b.sla++;
-    if (r.responseSeconds !== null) b.resp.push(r.responseSeconds);
-    if (r.conversationDurationSeconds !== null) b.res.push(r.conversationDurationSeconds);
-  }
-
+  const byDepartment = new Map(aggregates.map((row) => [row.department, row]));
   const result: DepartmentRow[] = DEPARTMENTS.map((department) => {
-    const b = buckets.get(department)!;
+    const row = byDepartment.get(department);
     return {
       department,
-      volume: b.volume,
-      avgResponseSeconds: average(b.resp),
-      avgResolutionSeconds: average(b.res),
-      open: b.open,
-      unresolved: b.unresolved,
-      slaBreaches: b.sla,
+      volume: asNumber(row?.volume),
+      avgResponseSeconds: nullableNumber(row?.avgResponseSeconds),
+      avgResolutionSeconds: nullableNumber(row?.avgResolutionSeconds),
+      open: asNumber(row?.open),
+      unresolved: asNumber(row?.unresolved),
+      slaBreaches: asNumber(row?.slaBreaches),
     };
   });
 
   const now = Date.now();
-  const topDelayed = rows
-    .filter((r) => r.status !== "resolved" && r.needsReply)
-    .map((r) => {
-      const base = r.assignedAt ?? r.createdAtCw;
-      return {
-        chatwootId: r.chatwootId,
-        contactName: r.contactName,
-        department: r.department,
-        assigneeName: r.assigneeName,
-        waitingSeconds: base ? Math.round((now - base.getTime()) / 1000) : null,
-      };
-    })
-    .sort((a, b) => (b.waitingSeconds ?? 0) - (a.waitingSeconds ?? 0))
-    .slice(0, 15);
+  const topDelayed = delayed.map((row) => {
+    const base = row.assignedAt ?? row.createdAtCw;
+    return {
+      chatwootId: row.chatwootId,
+      contactName: row.contactName,
+      department: row.department,
+      assigneeName: row.assigneeName,
+      waitingSeconds: base ? Math.max(0, Math.round((now - base.getTime()) / 1000)) : null,
+    };
+  });
 
   return { rows: result, topDelayed };
+}
+
+interface DepartmentAggregate {
+  department: string;
+  volume: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  avgResolutionSeconds: number | string | null;
+  open: bigint | number | string;
+  unresolved: bigint | number | string;
+  slaBreaches: bigint | number | string;
+}
+
+function asNumber(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: bigint | number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }

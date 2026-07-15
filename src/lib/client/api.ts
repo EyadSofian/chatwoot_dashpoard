@@ -24,22 +24,36 @@ export function useApiData<T>(path: string, extraQuery?: Record<string, string |
   const qs = searchParams.toString();
   const extra = extraQuery
     ? Object.entries(extraQuery)
-        .filter(([, v]) => v !== undefined && v !== "")
-        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+        .filter(([, value]) => value !== undefined && value !== "")
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}=${String(value)}`)
         .join("&")
     : "";
+
+  useEffect(() => {
+    const refresh = () => setNonce((value) => value + 1);
+    window.addEventListener("dashboard:refresh", refresh);
+    return () => window.removeEventListener("dashboard:refresh", refresh);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    const query = [qs, extra].filter(Boolean).join("&");
+    const params = new URLSearchParams(qs);
+    if (extraQuery) {
+      for (const [key, value] of Object.entries(extraQuery)) {
+        if (value === undefined || value === "") params.delete(key);
+        else params.set(key, String(value));
+      }
+    }
+    const query = params.toString();
     const url = query ? `${path}?${query}` : path;
-    fetch(url, { credentials: "same-origin" })
+    fetch(url, { credentials: "same-origin", cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `خطأ ${res.status}`);
+          throw new Error(body.error || `Request failed (${res.status})`);
         }
         return res.json();
       })
@@ -70,6 +84,6 @@ export async function apiPost<T = unknown>(path: string, body?: unknown): Promis
     body: body ? JSON.stringify(body) : undefined,
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((json as { error?: string }).error || `خطأ ${res.status}`);
+  if (!res.ok) throw new Error((json as { error?: string }).error || `Request failed (${res.status})`);
   return json as T;
 }

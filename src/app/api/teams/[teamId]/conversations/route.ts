@@ -13,13 +13,15 @@ export async function GET(request: Request, ctx: { params: Promise<{ teamId: str
 
   const { teamId } = await ctx.params;
   const id = Number(teamId);
-  if (!Number.isFinite(id)) return badRequest("رقم تيم غير صحيح");
+  if (!Number.isFinite(id)) return badRequest("Invalid team id");
 
   const url = new URL(request.url);
   const filters = parseFilters(url.searchParams);
   const page = Number(url.searchParams.get("page") ?? 1) || 1;
   const pageSize = Number(url.searchParams.get("pageSize") ?? 50) || 50;
+  const memberIdRaw = Number(url.searchParams.get("memberId"));
+  const memberId = Number.isFinite(memberIdRaw) && memberIdRaw > 0 ? memberIdRaw : undefined;
 
-  const result = await getTeamConversations(id, filters, page, pageSize);
+  const result = await getTeamConversations(id, filters, page, pageSize, memberId);
   return NextResponse.json(result);
 }

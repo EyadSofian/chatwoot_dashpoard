@@ -39,6 +39,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, stats });
   } catch (error) {
-    return serverError("فشلت إعادة احتساب ردود الكامبين", (error as Error).message);
+    return serverError("Campaign reply recomputation failed", (error as Error).message);
   }
 }

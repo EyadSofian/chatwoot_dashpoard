@@ -13,14 +13,14 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "بيانات غير صحيحة" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: "أدخل اسم المستخدم وكلمة المرور" }, { status: 400 });
+  if (!parsed.success) return NextResponse.json({ error: "Enter the username and password" }, { status: 400 });
 
   const { username, password } = parsed.data;
   if (!checkCredentials(username, password)) {
-    return NextResponse.json({ error: "بيانات الدخول غير صحيحة" }, { status: 401 });
+    return NextResponse.json({ error: "Incorrect username or password" }, { status: 401 });
   }
 
   const token = await createSessionToken(username);

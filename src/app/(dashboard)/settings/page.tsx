@@ -6,6 +6,7 @@ import { useApiData, apiPost } from "@/lib/client/api";
 import type { SlaSettings } from "@/lib/settings";
 import { Card, CardTitle, Spinner, Badge } from "@/components/ui";
 import { useLocale } from "@/lib/i18n";
+import { formatDateTime } from "@/lib/format";
 
 interface Health {
   config: { chatwoot: boolean; database: boolean; campaignSales: boolean; campaignOperations: boolean; webhookSecret: boolean };
@@ -124,7 +125,7 @@ function MetadataSyncCard() {
         </div>
         <div className="rounded-xl bg-surface-2 p-2.5">
           <dd className="text-xs font-bold">
-            {data?.lastSyncAt ? new Date(data.lastSyncAt).toLocaleString("ar-EG") : "—"}
+            {data?.lastSyncAt ? formatDateTime(data.lastSyncAt) : "—"}
           </dd>
           <dt className="text-2xs text-muted-foreground">{tr("آخر Sync", "Last sync")}</dt>
         </div>
@@ -221,8 +222,8 @@ function CampaignTest() {
   };
   return (
     <Card>
-      <CardTitle action={<button onClick={run} disabled={loading} className="btn-ghost text-xs">{loading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} اختبار</button>}>
-        تطبيقات الكامبين
+      <CardTitle action={<button onClick={run} disabled={loading} className="btn-ghost text-xs">{loading ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />} {tr("اختبار", "Test")}</button>}>
+        {tr("تطبيقات الكامبين", "Campaign apps")}
       </CardTitle>
       {sources ? (
         sources.length ? (
@@ -230,7 +231,7 @@ function CampaignTest() {
             {sources.map((s) => (
               <li key={s.key} className="flex items-center justify-between">
                 <span>{s.name}</span>
-                {s.ok ? <Badge tone="success">{s.jobs} مهمة</Badge> : <Badge tone="danger">{tr("فشل", "Failed")}</Badge>}
+                {s.ok ? <Badge tone="success">{s.jobs} {tr("مهمة", "jobs")}</Badge> : <Badge tone="danger">{tr("فشل", "Failed")}</Badge>}
               </li>
             ))}
           </ul>
@@ -247,6 +248,7 @@ function CampaignTest() {
 function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
   const { tr } = useLocale();
   const [copied, setCopied] = useState(false);
+  const copyLabel = copied ? tr("تم", "Copied") : tr("نسخ", "Copy");
   const full = hasSecret ? `${url}?token=<WEBHOOK_SECRET>` : url;
   return (
     <Card>
@@ -258,7 +260,7 @@ function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
           onClick={() => { navigator.clipboard?.writeText(full); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
           className="btn-ghost text-xs"
         >
-          <Copy className="h-3.5 w-3.5" /> {copied ? "تم" : "نسخ"}
+          <Copy className="h-3.5 w-3.5" /> {copyLabel}
         </button>
       </div>
     </Card>
@@ -267,15 +269,36 @@ function WebhookCard({ url, hasSecret }: { url: string; hasSecret: boolean }) {
 
 function BackfillCard() {
   const { tr } = useLocale();
+  const { data: backfillState, reload: reloadBackfillState } = useApiData<{
+    latest: {
+      status: string;
+      params: { days?: number; scope?: "recent" | "all"; startPage?: number } | null;
+      stats: BackfillStats | null;
+      startedAt: string;
+      finishedAt: string | null;
+      error: string | null;
+    } | null;
+  }>("/api/backfill");
   const [loading, setLoading] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const backfill = async (days: number) => {
-    setLoading(`b${days}`);
+  const backfill = async ({ days, scope, startPage }: { days: number; scope: "recent" | "all"; startPage?: number }) => {
+    const key = startPage ? "continue" : scope === "all" ? "all" : `b${days}`;
+    setLoading(key);
     setMsg(null);
     try {
-      const res = await apiPost<{ stats: { conversationsProcessed: number; conversationsFailed: number } }>("/api/backfill", { days });
-      setMsg(`${tr("تم جلب","Fetched")} ${res.stats.conversationsProcessed} (${res.stats.conversationsFailed} ${tr("فشل","failed")})`);
+      const res = await apiPost<{ stats: BackfillStats }>("/api/backfill", {
+        days,
+        scope,
+        startPage,
+        maxConversations: 250,
+        concurrency: 8,
+      });
+      const suffix = res.stats.truncated
+        ? ` · ${tr("دفعة جزئية، أكمل من الصفحة", "partial batch, continue from page")} ${res.stats.nextPage}`
+        : ` · ${tr("اكتملت الفترة", "range complete")}`;
+      setMsg(`${tr("تم جلب", "Fetched")} ${res.stats.conversationsProcessed} (${res.stats.conversationsFailed} ${tr("فشل", "failed")})${suffix}`);
+      reloadBackfillState();
     } catch (e) {
       setMsg(`${tr("خطأ","Error")}: ${(e as Error).message}`);
     } finally {
@@ -300,18 +323,48 @@ function BackfillCard() {
       <CardTitle>{tr("جلب البيانات", "Fetch data")}</CardTitle>
       <div className="mb-3 flex flex-wrap gap-2">
         {[7, 30, 60, 90].map((d) => (
-          <button key={d} onClick={() => backfill(d)} disabled={loading !== null} className="btn-ghost text-xs">
+          <button key={d} onClick={() => backfill({ days: d, scope: "recent" })} disabled={loading !== null} className="btn-ghost text-xs">
             {loading === `b${d}` ? <Spinner /> : <Database className="h-3.5 w-3.5" />} {tr("آخر","Last")} {d} {tr("يوم","days")}
           </button>
         ))}
+        <button onClick={() => backfill({ days: 3650, scope: "all" })} disabled={loading !== null} className="btn-ghost text-xs">
+          {loading === "all" ? <Spinner /> : <Database className="h-3.5 w-3.5" />} {tr("كل التاريخ", "Full history")}
+        </button>
       </div>
+      {backfillState?.latest?.status === "partial" && backfillState.latest.stats?.truncated && backfillState.latest.stats.nextPage && (
+        <button
+          onClick={() => backfill({
+            days: backfillState.latest!.stats!.days,
+            scope: backfillState.latest!.stats!.scope,
+            startPage: backfillState.latest!.stats!.nextPage!,
+          })}
+          disabled={loading !== null}
+          className="btn-soft mb-3 text-xs"
+        >
+          {loading === "continue" ? <Spinner /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {tr("استكمال الجلب من الصفحة", "Continue from page")} {backfillState.latest.stats.nextPage}
+        </button>
+      )}
       <button onClick={syncCampaigns} disabled={loading !== null} className="btn-primary text-xs">
-        {loading === "camp" ? <Spinner /> : <Megaphone className="h-3.5 w-3.5" />} مزامنة الكامبينات
+        {loading === "camp" ? <Spinner /> : <Megaphone className="h-3.5 w-3.5" />} {tr("مزامنة الكامبينات", "Sync campaigns")}
       </button>
       {msg && <div className="mt-3 rounded-lg bg-surface-2 p-2 text-xs">{msg}</div>}
       <p className="mt-2 text-2xs text-muted-foreground">{tr("الـ Backfill يجلب المحادثات والرسائل ويعيد حساب المؤشرات. قد يستغرق دقائق للفترات الطويلة.", "Backfill fetches conversations and messages and recomputes the metrics. It can take minutes for long periods.")}</p>
     </Card>
   );
+}
+
+interface BackfillStats {
+  days: number;
+  scope: "recent" | "all";
+  conversationsProcessed: number;
+  conversationsFailed: number;
+  pages: number;
+  conversationsScanned: number;
+  estimatedTotal: number | null;
+  truncated: boolean;
+  nextPage: number | null;
+  remainingEstimate: number | null;
 }
 
 function SlaForm() {

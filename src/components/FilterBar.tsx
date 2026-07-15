@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
@@ -32,6 +32,11 @@ export function FilterBar() {
   const { locale, tr } = useLocale();
   const [sheet, setSheet] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [searchText, setSearchText] = useState(searchParams.get("search") ?? "");
+
+  useEffect(() => {
+    setSearchText(searchParams.get("search") ?? "");
+  }, [searchParams]);
 
   const setParams = useCallback(
     (updates: Record<string, string | undefined>) => {
@@ -181,12 +186,13 @@ export function FilterBar() {
               aria-hidden
             />
             <input
-              defaultValue={get("search")}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
               placeholder={tr("الاسم أو الهاتف أو رقم المحادثة", "Name, phone, or conversation #")}
               onKeyDown={(e) => {
-                if (e.key === "Enter") setParams({ search: (e.target as HTMLInputElement).value });
+                if (e.key === "Enter") setParams({ search: searchText });
               }}
-              onBlur={(e) => setParams({ search: e.target.value })}
+              onBlur={() => setParams({ search: searchText })}
               className="input rounded-full py-2 ps-9 text-xs"
               aria-label={tr("بحث", "Search")}
             />

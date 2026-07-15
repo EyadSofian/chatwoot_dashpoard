@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ChatwootClient, getPayload } from "@/lib/chatwoot/client";
 import { fetchAllMessages } from "@/lib/chatwoot/fetchers";
@@ -24,6 +25,19 @@ export interface LiveConversation {
   status: string | null;
   assigneeCwId: number | null;
   assigneeName: string | null;
+}
+
+interface AuditIntervalAggregate {
+  agentId: number;
+  assignedInPeriod: bigint | number | string;
+  assignmentEvents: bigint | number | string;
+  responses: bigint | number | string;
+}
+
+function numberValue(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export type MismatchReason =
@@ -163,27 +177,31 @@ export async function auditAgents(f: ReportFilters, opts: { maxPages?: number } 
   const liveWhere = conversationWhere(f, { ignoreDate: true });
   const periodWhere = conversationWhere(f);
 
-  const [agents, dashActive, intervals, created, resolved, lastIngest] = await Promise.all([
+  const [agents, dashActive, intervalAggregates, created, resolved, lastIngest] = await Promise.all([
     prisma.agent.findMany({ select: { id: true, name: true } }),
     prisma.conversation.findMany({
       where: { ...liveWhere, status: { in: [...ACTIVE_STATUSES] }, assigneeCwId: { not: null } },
       select: { chatwootId: true, assigneeCwId: true, status: true, needsReply: true },
-      take: 40000,
     }),
-    prisma.assignmentInterval.findMany({
-      where: { startedAt: { gte: f.from, lte: f.to } },
-      select: { assigneeCwId: true, conversationCwId: true, responded: true },
-      take: 100000,
-    }),
-    prisma.conversation.findMany({
+    prisma.$queryRaw<AuditIntervalAggregate[]>(Prisma.sql`
+      SELECT
+        i."assigneeCwId" AS "agentId",
+        COUNT(DISTINCT i."conversationCwId")::bigint AS "assignedInPeriod",
+        COUNT(*)::bigint AS "assignmentEvents",
+        COUNT(*) FILTER (WHERE i."responded" = TRUE)::bigint AS "responses"
+      FROM "assignment_intervals" i
+      WHERE i."startedAt" >= ${f.from} AND i."startedAt" <= ${f.to}
+      GROUP BY i."assigneeCwId"
+    `),
+    prisma.conversation.groupBy({
+      by: ["assigneeCwId"],
       where: { ...periodWhere, assigneeCwId: { not: null } },
-      select: { assigneeCwId: true },
-      take: 40000,
+      _count: { _all: true },
     }),
-    prisma.conversation.findMany({
+    prisma.conversation.groupBy({
+      by: ["assigneeCwId"],
       where: { ...liveWhere, resolvedAt: { gte: f.from, lte: f.to }, assigneeCwId: { not: null } },
-      select: { assigneeCwId: true },
-      take: 40000,
+      _count: { _all: true },
     }),
     prisma.conversation.findFirst({ orderBy: { updatedAt: "desc" }, select: { updatedAt: true } }),
   ]);
@@ -223,20 +241,18 @@ export async function auditAgents(f: ReportFilters, opts: { maxPages?: number } 
     dashStatus.set(c.assigneeCwId, s);
   }
 
-  const uniqueAssigned = new Map<number, Set<number>>();
+  const uniqueAssigned = new Map<number, number>();
   const events = new Map<number, number>();
   const responses = new Map<number, number>();
-  for (const i of intervals) {
-    const set = uniqueAssigned.get(i.assigneeCwId) ?? new Set<number>();
-    set.add(i.conversationCwId);
-    uniqueAssigned.set(i.assigneeCwId, set);
-    events.set(i.assigneeCwId, (events.get(i.assigneeCwId) ?? 0) + 1);
-    if (i.responded) responses.set(i.assigneeCwId, (responses.get(i.assigneeCwId) ?? 0) + 1);
+  for (const aggregate of intervalAggregates) {
+    uniqueAssigned.set(aggregate.agentId, numberValue(aggregate.assignedInPeriod));
+    events.set(aggregate.agentId, numberValue(aggregate.assignmentEvents));
+    responses.set(aggregate.agentId, numberValue(aggregate.responses));
   }
 
-  const countBy = (rows: { assigneeCwId: number | null }[]) => {
+  const countBy = (rows: { assigneeCwId: number | null; _count: { _all: number } }[]) => {
     const m = new Map<number, number>();
-    for (const r of rows) if (r.assigneeCwId !== null) m.set(r.assigneeCwId, (m.get(r.assigneeCwId) ?? 0) + 1);
+    for (const r of rows) if (r.assigneeCwId !== null) m.set(r.assigneeCwId, r._count._all);
     return m;
   };
   const createdBy = countBy(created);
@@ -273,7 +289,7 @@ export async function auditAgents(f: ReportFilters, opts: { maxPages?: number } 
       dashboardSnoozed: ds.snoozed,
       dashboardActive: dashSet.size,
       difference: dashSet.size - liveSet.size,
-      assignedInPeriod: uniqueAssigned.get(agentId)?.size ?? 0,
+      assignedInPeriod: uniqueAssigned.get(agentId) ?? 0,
       assignmentEvents: events.get(agentId) ?? 0,
       firstResponsesInPeriod: responses.get(agentId) ?? 0,
       createdInPeriod: createdBy.get(agentId) ?? 0,
@@ -334,7 +350,6 @@ export async function auditAgentDetail(agentId: number, f: ReportFilters, opts: 
     prisma.conversation.findMany({
       where: { ...liveWhere, assigneeCwId: agentId, status: { in: [...ACTIVE_STATUSES] } },
       select: { chatwootId: true, status: true, assigneeCwId: true },
-      take: 20000,
     }),
     relevantIds.length
       ? prisma.conversation.findMany({
@@ -346,7 +361,6 @@ export async function auditAgentDetail(agentId: number, f: ReportFilters, opts: 
       where: { assigneeCwId: agentId, startedAt: { gte: f.from, lte: f.to } },
       select: { conversationCwId: true, startedAt: true, responded: true, responseSeconds: true },
       orderBy: { startedAt: "desc" },
-      take: 5000,
     }),
   ]);
 
@@ -490,7 +504,6 @@ export async function reconcileCurrentWorkload(opts: { maxPages?: number; maxFet
       ],
     },
     select: { chatwootId: true, status: true, assigneeCwId: true },
-    take: 40000,
   });
   const localById = new Map(local.map((c) => [c.chatwootId, c]));
 

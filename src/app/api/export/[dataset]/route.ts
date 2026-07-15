@@ -1,7 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { env } from "@/env";
 import { prisma } from "@/lib/db";
 import { requireSession, badRequest } from "@/lib/http";
-import { toCsv, csvResponse, type CsvColumn } from "@/lib/csv";
+import { toCsv, csvResponse, streamCsvResponse, type CsvColumn } from "@/lib/csv";
 import { parseFilters } from "@/lib/reporting/filters";
 import { conversationWhere } from "@/lib/reporting/filters";
 import { getAgentLeaderboard } from "@/lib/reporting/agents";
@@ -31,12 +32,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
 
   switch (dataset) {
     case "conversations": {
-      const rows = await prisma.conversation.findMany({
-        where: conversationWhere(filters),
-        orderBy: { lastMessageAt: "desc" },
-        take: 20000,
-      });
-      const columns: CsvColumn<(typeof rows)[number]>[] = [
+      type Row = Prisma.ConversationGetPayload<object>;
+      const columns: CsvColumn<Row>[] = [
         { key: "chatwootId", label: "رقم المحادثة" },
         { key: "contactName", label: "العميل" },
         { key: "contactPhone", label: "الهاتف" },
@@ -57,7 +54,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
         { key: "createdAtCw", label: "وقت الإنشاء", format: (r) => iso(r.createdAtCw) },
         { key: "link", label: "رابط Chatwoot", format: (r) => link(r.chatwootId) },
       ];
-      return csvResponse(toCsv(rows, columns), "conversations.csv");
+      return streamCsvResponse(iterateConversations(conversationWhere(filters)), columns, "conversations.csv");
     }
 
     case "agents": {
@@ -69,8 +66,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
         // Column names state their basis — no bare "Conversations".
         { key: "currentWorkload", label: "الحمل الحالي (الآن)" },
         { key: "currentOpen", label: "مفتوحة الآن" },
-        { key: "currentPending", label: "منتظرة الآن" },
-        { key: "currentSnoozed", label: "مؤجلة الآن" },
+        { key: "currentWaiting", label: "منتظرة/مؤجلة الآن" },
         { key: "needsReplyNow", label: "تحتاج رد الآن" },
         { key: "assignedInPeriod", label: "أُسندت في الفترة (فريدة)" },
         { key: "assignmentEvents", label: "أحداث الإسناد في الفترة" },
@@ -117,7 +113,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
 
     case "team-members": {
       const teamId = Number(new URL(request.url).searchParams.get("teamId"));
-      if (!Number.isFinite(teamId)) return badRequest("teamId مطلوب");
+      if (!Number.isFinite(teamId)) return badRequest("teamId is required");
       const rows = await getTeamMembers(teamId, filters);
       const columns: CsvColumn<(typeof rows)[number]>[] = [
         { key: "name", label: "الموظف" },
@@ -138,11 +134,13 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
     }
 
     case "team-conversations": {
-      const teamId = Number(new URL(request.url).searchParams.get("teamId"));
-      if (!Number.isFinite(teamId)) return badRequest("teamId مطلوب");
-      // Export is the one place the whole list is wanted, not one page of it.
-      const { rows } = await getTeamConversations(teamId, filters, 1, 200);
-      const columns: CsvColumn<(typeof rows)[number]>[] = [
+      const params = new URL(request.url).searchParams;
+      const teamId = Number(params.get("teamId"));
+      if (!Number.isFinite(teamId)) return badRequest("teamId is required");
+      const memberIdValue = Number(params.get("memberId"));
+      const memberId = Number.isFinite(memberIdValue) && memberIdValue > 0 ? memberIdValue : undefined;
+      const first = await getTeamConversations(teamId, filters, 1, 200, memberId);
+      const columns: CsvColumn<(typeof first.rows)[number]>[] = [
         { key: "chatwootId", label: "رقم المحادثة" },
         { key: "contactName", label: "العميل" },
         { key: "contactPhone", label: "الهاتف" },
@@ -159,7 +157,11 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
         { key: "lastMessageAt", label: "آخر رسالة", format: (r) => iso(r.lastMessageAt) },
         { key: "chatwootId", label: "رابط", format: (r) => link(r.chatwootId) },
       ];
-      return csvResponse(toCsv(rows, columns), `team-${teamId}-conversations.csv`);
+      return streamCsvResponse(
+        iterateTeamConversations(teamId, filters, first, memberId),
+        columns,
+        `team-${teamId}-conversations.csv`,
+      );
     }
 
     case "labels": {
@@ -227,8 +229,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
     }
 
     case "sla": {
-      const { breachedList } = await getSla(filters);
-      const columns: CsvColumn<(typeof breachedList)[number]>[] = [
+      type Row = Prisma.ConversationGetPayload<object>;
+      const columns: CsvColumn<Row>[] = [
         { key: "chatwootId", label: "رقم المحادثة" },
         { key: "contactName", label: "العميل" },
         { key: "assigneeName", label: "الموظف" },
@@ -237,7 +239,11 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
         { key: "status", label: "الحالة" },
         { key: "chatwootId", label: "رابط", format: (r) => link(r.chatwootId) },
       ];
-      return csvResponse(toCsv(breachedList, columns), "sla-breaches.csv");
+      return streamCsvResponse(
+        iterateConversations({ ...conversationWhere(filters), slaFirstResponseState: "breached" }),
+        columns,
+        "sla-breaches.csv",
+      );
     }
 
     case "fahd": {
@@ -254,6 +260,36 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
     }
 
     default:
-      return badRequest("مجموعة بيانات غير معروفة");
+      return badRequest("Unknown dataset");
+  }
+}
+
+async function* iterateConversations(where: Prisma.ConversationWhereInput) {
+  const batchSize = 1_000;
+  let cursor: number | undefined;
+  while (true) {
+    const rows = await prisma.conversation.findMany({
+      where,
+      orderBy: { chatwootId: "asc" },
+      take: batchSize,
+      ...(cursor !== undefined ? { cursor: { chatwootId: cursor }, skip: 1 } : {}),
+    });
+    if (!rows.length) return;
+    for (const row of rows) yield row;
+    cursor = rows.at(-1)!.chatwootId;
+    if (rows.length < batchSize) return;
+  }
+}
+
+async function* iterateTeamConversations(
+  teamId: number,
+  filters: ReturnType<typeof parseFilters>,
+  first: Awaited<ReturnType<typeof getTeamConversations>>,
+  memberId?: number,
+) {
+  for (const row of first.rows) yield row;
+  for (let page = 2; page <= first.pages; page++) {
+    const result = await getTeamConversations(teamId, filters, page, 200, memberId);
+    for (const row of result.rows) yield row;
   }
 }

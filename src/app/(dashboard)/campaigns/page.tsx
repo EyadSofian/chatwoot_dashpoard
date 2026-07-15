@@ -281,8 +281,7 @@ export default function CampaignsPage() {
 
       {data && (
         <p className="text-2xs text-muted-foreground">
-          آخر Sync كامبينات: {data.meta.lastCampaignSyncAt ? formatDateTime(data.meta.lastCampaignSyncAt) : "—"} · آخر
-          مطابقة: {data.meta.lastReconciledAt ? formatDateTime(data.meta.lastReconciledAt) : "—"}
+          {tr("آخر Sync كامبينات", "Last campaign sync")}: {data.meta.lastCampaignSyncAt ? formatDateTime(data.meta.lastCampaignSyncAt) : "—"} · {tr("آخر مطابقة", "Last reconciliation")}: {data.meta.lastReconciledAt ? formatDateTime(data.meta.lastReconciledAt) : "—"}
         </p>
       )}
 

@@ -78,15 +78,18 @@ export function parseFilters(searchParams: URLSearchParams): ReportFilters {
 }
 
 /** Prisma where-clause for conversations from the filter set. */
-export function conversationWhere(f: ReportFilters, opts: { ignoreDate?: boolean } = {}): Prisma.ConversationWhereInput {
+export function conversationWhere(
+  f: ReportFilters,
+  opts: { ignoreDate?: boolean; ignoreAgent?: boolean; ignoreTeam?: boolean } = {},
+): Prisma.ConversationWhereInput {
   const where: Prisma.ConversationWhereInput = {};
 
   if (!opts.ignoreDate) {
     where.createdAtCw = { gte: f.from, lte: f.to };
   }
   if (f.department?.length) where.department = { in: f.department };
-  if (f.teamId?.length) where.teamCwId = { in: f.teamId };
-  if (f.agentId?.length) where.assigneeCwId = { in: f.agentId };
+  if (!opts.ignoreTeam && f.teamId?.length) where.teamCwId = { in: f.teamId };
+  if (!opts.ignoreAgent && f.agentId?.length) where.assigneeCwId = { in: f.agentId };
   if (f.inboxId?.length) where.inboxCwId = { in: f.inboxId };
   if (f.status?.length) where.status = { in: f.status };
 

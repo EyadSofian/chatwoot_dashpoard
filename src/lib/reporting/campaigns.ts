@@ -1,5 +1,5 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { average } from "@/lib/format";
 import type { ReportFilters } from "./filters";
 
 /**
@@ -95,25 +95,24 @@ export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
       ...(f.campaignLabel?.length ? { labelName: { in: f.campaignLabel } } : {}),
     },
     orderBy: { createdAtApp: "desc" },
-    take: 1000,
   });
 
   const jobIds = jobs.map((j) => j.id);
 
-  const [replies, recipientStates, lastSync, repliesInPeriod] = await Promise.all([
+  const [replyAggregates, recipientStates, lastSync, repliesInPeriod] = await Promise.all([
     jobIds.length
-      ? prisma.campaignReply.findMany({
-          where: { campaignJobId: { in: jobIds }, replyAt: { lte: f.to } },
-          select: {
-            campaignJobId: true,
-            conversationCwId: true,
-            assigned: true,
-            assigneeName: true,
-            responseSeconds: true,
-            firstAgentReplyAt: true,
-          },
-          take: 100000,
-        })
+      ? prisma.$queryRaw<CampaignReplyAggregate[]>(Prisma.sql`
+          SELECT
+            r."campaignJobId",
+            COUNT(DISTINCT r."conversationCwId")::bigint AS "customerReplies",
+            COUNT(*) FILTER (WHERE r."firstAgentReplyAt" IS NOT NULL)::bigint AS "teamReplied",
+            AVG(r."responseSeconds")::double precision AS "avgTeamResponseSeconds",
+            COUNT(*) FILTER (WHERE r."assigned" = FALSE)::bigint AS "unassigned",
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT r."assigneeName"), NULL) AS "agents"
+          FROM "campaign_replies" r
+          WHERE r."campaignJobId" IN (${Prisma.join(jobIds)}) AND r."replyAt" <= ${f.to}
+          GROUP BY r."campaignJobId"
+        `)
       : Promise.resolve([]),
     jobIds.length
       ? prisma.campaignRecipient.groupBy({
@@ -133,13 +132,7 @@ export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
     }),
   ]);
 
-  const byJob = new Map<string, typeof replies>();
-  for (const r of replies) {
-    const key = String(r.campaignJobId);
-    const list = byJob.get(key) ?? [];
-    list.push(r);
-    byJob.set(key, list);
-  }
+  const repliesByJob = new Map(replyAggregates.map((row) => [String(row.campaignJobId), row]));
 
   const matchedByJob = new Map<string, number>();
   const unmatchedByJob = new Map<string, number>();
@@ -152,16 +145,11 @@ export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
 
   const rows: CampaignRow[] = jobs.map((job) => {
     const key = String(job.id);
-    const list = byJob.get(key) ?? [];
-
-    // Distinct conversations — one recipient replying twice is still one reply.
-    const repliedConvs = new Set(list.map((r) => r.conversationCwId));
-    const customerReplies = repliedConvs.size;
-
-    const teamReplied = list.filter((r) => r.firstAgentReplyAt !== null).length;
-    const resp = list.map((r) => r.responseSeconds).filter((v): v is number => v !== null);
-    const unassigned = list.filter((r) => !r.assigned).length;
-    const agents = [...new Set(list.map((r) => r.assigneeName).filter((n): n is string => Boolean(n)))];
+    const reply = repliesByJob.get(key);
+    const customerReplies = asNumber(reply?.customerReplies);
+    const teamReplied = asNumber(reply?.teamReplied);
+    const unassigned = asNumber(reply?.unassigned);
+    const agents = reply?.agents ?? [];
 
     const matched = matchedByJob.get(key) ?? 0;
     const unmatched = unmatchedByJob.get(key) ?? 0;
@@ -195,7 +183,7 @@ export async function getCampaigns(f: ReportFilters): Promise<CampaignsResult> {
       customerReplies,
       replyRate: job.sent > 0 ? customerReplies / job.sent : 0,
       teamReplied,
-      avgTeamResponseSeconds: average(resp),
+      avgTeamResponseSeconds: nullableNumber(reply?.avgTeamResponseSeconds),
       unassigned,
       unmatched,
 
@@ -237,42 +225,114 @@ export async function getCampaignPerformanceBySource(f: ReportFilters) {
 
   const out: { source: string; sent: number; failed: number; replies: number; replyRate: number }[] = [];
 
-  for (const source of sources) {
-    const jobs = await prisma.campaignJob.findMany({
-      where: { sourceKey: source, type: "send", createdAtApp: { gte: f.from, lte: f.to } },
-      select: { id: true, sent: true, failed: true },
-      take: 2000,
-    });
-
-    const sent = jobs.reduce((s, j) => s + j.sent, 0);
-    const failed = jobs.reduce((s, j) => s + j.failed, 0);
-
-    const replies = jobs.length
-      ? await prisma.campaignReply.findMany({
-          where: { campaignJobId: { in: jobs.map((j) => j.id) }, replyAt: { lte: f.to } },
-          select: { campaignJobId: true, conversationCwId: true },
-          take: 100000,
-        })
-      : [];
-
-    // Distinct per (job, conversation) — the same contact in two campaigns counts twice.
-    const distinct = new Set(replies.map((r) => `${r.campaignJobId}:${r.conversationCwId}`)).size;
-
-    out.push({ source, sent, failed, replies: distinct, replyRate: sent > 0 ? distinct / sent : 0 });
-  }
+  const rows = await Promise.all(
+    sources.map(async (source) => {
+      const [jobs, replyRows] = await Promise.all([
+        prisma.campaignJob.aggregate({
+          where: { sourceKey: source, type: "send", createdAtApp: { gte: f.from, lte: f.to } },
+          _sum: { sent: true, failed: true },
+        }),
+        prisma.$queryRaw<Array<{ replies: bigint | number | string }>>(Prisma.sql`
+          SELECT COUNT(DISTINCT (r."campaignJobId", r."conversationCwId"))::bigint AS "replies"
+          FROM "campaign_replies" r
+          INNER JOIN "campaign_jobs" j ON j."id" = r."campaignJobId"
+          WHERE j."sourceKey" = ${source}
+            AND j."type" = 'send'
+            AND j."createdAtApp" >= ${f.from}
+            AND j."createdAtApp" <= ${f.to}
+            AND r."replyAt" <= ${f.to}
+        `),
+      ]);
+      const sent = jobs._sum.sent ?? 0;
+      const failed = jobs._sum.failed ?? 0;
+      const replies = asNumber(replyRows[0]?.replies);
+      return { source, sent, failed, replies, replyRate: sent > 0 ? replies / sent : 0 };
+    }),
+  );
+  out.push(...rows);
 
   return out;
 }
 
-export async function getCampaignDetail(sourceKey: string, jobId: string) {
+export async function getCampaignDetail(
+  sourceKey: string,
+  jobId: string,
+  recipientPage = 1,
+  replyPage = 1,
+  pageSize = 100,
+) {
   const job = await prisma.campaignJob.findUnique({ where: { sourceKey_jobId: { sourceKey, jobId } } });
   if (!job) return null;
 
-  const [recipients, replies] = await Promise.all([
-    prisma.campaignRecipient.findMany({ where: { campaignJobId: job.id }, take: 5000 }),
+  const size = Math.min(Math.max(pageSize, 1), 200);
+  const recipientsPage = Math.max(recipientPage, 1);
+  const repliesPage = Math.max(replyPage, 1);
+  const [recipientTotal, recipientRows, replyTotal, replyRows] = await Promise.all([
+    prisma.campaignRecipient.count({ where: { campaignJobId: job.id } }),
+    prisma.campaignRecipient.findMany({
+      where: { campaignJobId: job.id },
+      orderBy: { id: "asc" },
+      skip: (recipientsPage - 1) * size,
+      take: size,
+      select: {
+        id: true,
+        phone: true,
+        name: true,
+        status: true,
+        conversationCwId: true,
+        errorDescription: true,
+      },
+    }),
+    prisma.campaignReply.count({ where: { campaignJobId: job.id } }),
     // Joined by job — not by label, which would drag in other campaigns.
-    prisma.campaignReply.findMany({ where: { campaignJobId: job.id }, take: 5000 }),
+    prisma.campaignReply.findMany({
+      where: { campaignJobId: job.id },
+      orderBy: { id: "asc" },
+      skip: (repliesPage - 1) * size,
+      take: size,
+      select: {
+        conversationCwId: true,
+        assigned: true,
+        assigneeName: true,
+        responseSeconds: true,
+      },
+    }),
   ]);
 
-  return { job, recipients, replies };
+  return {
+    job: { ...job, id: String(job.id) },
+    recipients: {
+      rows: recipientRows.map((row) => ({ ...row, id: String(row.id) })),
+      total: recipientTotal,
+      page: recipientsPage,
+      pages: Math.ceil(recipientTotal / size),
+    },
+    replies: {
+      rows: replyRows,
+      total: replyTotal,
+      page: repliesPage,
+      pages: Math.ceil(replyTotal / size),
+    },
+  };
+}
+
+interface CampaignReplyAggregate {
+  campaignJobId: bigint;
+  customerReplies: bigint | number | string;
+  teamReplied: bigint | number | string;
+  avgTeamResponseSeconds: number | string | null;
+  unassigned: bigint | number | string;
+  agents: string[];
+}
+
+function asNumber(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: bigint | number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }

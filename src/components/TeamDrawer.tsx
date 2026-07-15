@@ -59,20 +59,24 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
   const { data, loading, error } = useApiData<TeamDetail>(`/api/teams/${teamId}`);
   const { data: convs, loading: convsLoading } = useApiData<TeamConversations>(
     `/api/teams/${teamId}/conversations`,
-    { page, pageSize: 25 },
+    { page, pageSize: 25, memberId: agentFilter ?? undefined },
   );
 
   const row = data?.row;
   const teamName = data?.team?.name ?? row?.name ?? `${tr("تيم", "Team")} #${teamId}`;
 
-  // Selecting a member narrows the conversation list to that agent, inside this
-  // team only — an agent in two teams never drags the other team's work in.
-  const visibleConvs = agentFilter
-    ? (convs?.rows ?? []).filter((c) => c.assigneeCwId === agentFilter)
-    : (convs?.rows ?? []);
+  const selectAgent = (agentId: number | null) => {
+    setAgentFilter(agentId);
+    setPage(1);
+  };
 
-  const exportQs = (dataset: string) =>
-    `/api/export/${dataset}?${new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(qs)), teamId: String(teamId) }).toString()}`;
+  const exportQs = (dataset: string) => {
+    const params = new URLSearchParams(qs);
+    params.set("teamId", String(teamId));
+    if (agentFilter !== null) params.set("memberId", String(agentFilter));
+    else params.delete("memberId");
+    return `/api/export/${dataset}?${params.toString()}`;
+  };
 
   return (
     <>
@@ -93,7 +97,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
         aria-modal="true"
         aria-label={teamName}
       >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-extrabold tracking-tight">{teamName}</h2>
             <p className="truncate text-xs text-muted-foreground">
@@ -111,7 +115,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
           {loading && (
             <div className="flex justify-center p-10">
               <Spinner />
@@ -128,10 +132,10 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
               )}
 
               {/* KPI cards */}
-              <div className="mb-5 grid grid-cols-3 gap-2.5">
-                <MiniStat label={tr("محادثات", "Conversations")} value={formatNumber(row.conversations)} tone="brand" />
-                <MiniStat label={tr("مفتوحة", "Open")} value={formatNumber(row.open)} />
-                <MiniStat label={tr("محلولة", "Resolved")} value={formatNumber(row.resolved)} tone="success" />
+              <div className="mb-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <MiniStat label={tr("الحمل الحالي", "Current workload")} value={formatNumber(row.currentWorkload)} tone="brand" />
+                <MiniStat label={tr("مفتوحة الآن", "Open now")} value={formatNumber(row.currentOpen)} />
+                <MiniStat label={tr("محادثات الفترة", "Period conversations")} value={formatNumber(row.conversations)} tone="brand" />
                 <MiniStat label={tr("تحتاج رد", "Needs reply")} value={formatNumber(row.needsReply)} tone="warning" />
                 <MiniStat label={tr("خرق SLA", "SLA breaches")} value={formatNumber(row.slaBreaches)} tone="danger" />
                 <MiniStat
@@ -139,12 +143,12 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                   value={row.avgResponseSeconds != null ? formatDurationShort(row.avgResponseSeconds) : "—"}
                   tone="violet"
                 />
-                <MiniStat
-                  label={tr("متوسط الإغلاق", "Avg resolution")}
-                  value={row.avgResolutionSeconds != null ? formatDurationShort(row.avgResolutionSeconds) : "—"}
-                />
-                <MiniStat label={tr("ردود كامبين", "Campaign replies")} value={formatNumber(row.campaignReplies)} tone="brand" />
-                <MiniStat label={tr("تسليمات فهد", "Fahd handoffs")} value={formatNumber(row.botHandoffs)} tone="violet" />
+              </div>
+              <div className="mb-5 flex flex-wrap gap-x-4 gap-y-1 border-b border-border pb-4 text-2xs text-muted-foreground">
+                <span>{tr("محلولة", "Resolved")}: <strong className="text-foreground tnum">{formatNumber(row.resolved)}</strong></span>
+                <span>{tr("متوسط الإغلاق", "Avg resolution")}: <strong className="text-foreground tnum">{row.avgResolutionSeconds != null ? formatDurationShort(row.avgResolutionSeconds) : "—"}</strong></span>
+                <span>{tr("ردود كامبين", "Campaign replies")}: <strong className="text-foreground tnum">{formatNumber(row.campaignReplies)}</strong></span>
+                <span>{tr("تسليمات فهد", "Fahd handoffs")}: <strong className="text-foreground tnum">{formatNumber(row.botHandoffs)}</strong></span>
               </div>
 
               {/* Members */}
@@ -169,7 +173,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                     return (
                       <li key={m.agentId}>
                         <button
-                          onClick={() => setAgentFilter(selected ? null : m.agentId)}
+                          onClick={() => selectAgent(selected ? null : m.agentId)}
                           aria-pressed={selected}
                           className={cn(
                             "w-full cursor-pointer rounded-xl border p-3 text-start transition-colors",
@@ -193,33 +197,29 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                                 <div className="text-2xs text-muted-foreground">{tr("لا نشاط في الفترة", "No activity in the period")}</div>
                               )}
                             </div>
-                            {m.slaBreaches > 0 && <Badge tone="danger">{formatNumber(m.slaBreaches)} خرق</Badge>}
+                            <div className="flex shrink-0 items-center gap-1">
+                              {m.needsReply > 0 && <Badge tone="danger">{formatNumber(m.needsReply)} {tr("تحتاج رد", "need reply")}</Badge>}
+                              {m.slaBreaches > 0 && <Badge tone="warning">{formatNumber(m.slaBreaches)} SLA</Badge>}
+                            </div>
                           </div>
 
                           {m.hasActivity && (
                             <dl className="mt-2.5 grid grid-cols-4 gap-2 text-center">
                               <div>
+                                <dd className="text-sm font-bold tnum">{formatNumber(m.currentWorkload)}</dd>
+                                <dt className="text-2xs text-muted-foreground">{tr("الحمل الحالي", "Current")}</dt>
+                              </div>
+                              <div>
+                                <dd className="text-sm font-bold tnum">{formatNumber(m.openLoad)}</dd>
+                                <dt className="text-2xs text-muted-foreground">{tr("مفتوحة الآن", "Open now")}</dt>
+                              </div>
+                              <div>
                                 <dd className="text-sm font-bold tnum">{formatNumber(m.assigned)}</dd>
-                                <dt className="text-2xs text-muted-foreground">مُسند</dt>
-                              </div>
-                              <div>
-                                <dd className="text-sm font-bold tnum">{formatNumber(m.replied)}</dd>
-                                <dt className="text-2xs text-muted-foreground">تم الرد</dt>
-                              </div>
-                              <div>
-                                <dd
-                                  className={cn(
-                                    "text-sm font-bold tnum",
-                                    m.needsReply > 0 && "text-destructive-fg",
-                                  )}
-                                >
-                                  {formatNumber(m.needsReply)}
-                                </dd>
-                                <dt className="text-2xs text-muted-foreground">تحتاج رد</dt>
+                                <dt className="text-2xs text-muted-foreground">{tr("محادثات الفترة", "Period")}</dt>
                               </div>
                               <div>
                                 <dd className="text-sm font-bold tnum">{dur(m.avgResponseSeconds)}</dd>
-                                <dt className="text-2xs text-muted-foreground">متوسط الرد</dt>
+                                <dt className="text-2xs text-muted-foreground">{tr("متوسط الرد", "Avg response")}</dt>
                               </div>
                             </dl>
                           )}
@@ -236,7 +236,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                   {tr("محادثات التيم", "Team conversations")}
                   {agentFilter && (
                     <button
-                      onClick={() => setAgentFilter(null)}
+                      onClick={() => selectAgent(null)}
                       className="ms-2 cursor-pointer text-2xs font-semibold text-primary hover:underline"
                     >
                       {tr("(إلغاء تصفية الموظف)", "(clear agent filter)")}
@@ -252,12 +252,12 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                 <div className="flex justify-center p-6">
                   <Spinner />
                 </div>
-              ) : visibleConvs.length === 0 ? (
+              ) : (convs?.rows ?? []).length === 0 ? (
                 <EmptyState title={tr("لا توجد محادثات في الفترة", "No conversations in the period")} />
               ) : (
                 <>
                   <ul className="space-y-2">
-                    {visibleConvs.map((c) => (
+                    {(convs?.rows ?? []).map((c) => (
                       <li key={c.chatwootId} className="rounded-xl border border-border p-3">
                         <div className="flex items-start justify-between gap-2">
                           <Link
@@ -270,9 +270,9 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
                           <span>{c.assigneeName || tr("غير مُسند", "Unassigned")}</span>
-                          <span>زمن الرد: {c.responseSeconds != null ? formatDurationShort(c.responseSeconds) : "—"}</span>
+                          <span>{tr("زمن الرد", "Response")}: {c.responseSeconds != null ? formatDurationShort(c.responseSeconds) : "—"}</span>
                           {c.lastMessageAt && <span>{formatDateTime(c.lastMessageAt)}</span>}
-                          {c.needsReply && <span className="font-bold text-destructive-fg">يحتاج رد</span>}
+                          {c.needsReply && <span className="font-bold text-destructive-fg">{tr("يحتاج رد", "Needs reply")}</span>}
                         </div>
                       </li>
                     ))}
@@ -285,17 +285,17 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         className="btn-ghost px-3 py-1.5 text-xs"
                       >
-                        السابق
+                        {tr("السابق", "Previous")}
                       </button>
                       <span className="text-2xs text-muted-foreground tnum">
-                        صفحة {formatNumber(convs.page)} من {formatNumber(convs.pages)} · {formatNumber(convs.total)} محادثة
+                        {tr("صفحة", "Page")} {formatNumber(convs.page)} {tr("من", "of")} {formatNumber(convs.pages)} · {formatNumber(convs.total)} {tr("محادثة", "conversations")}
                       </span>
                       <button
                         disabled={page >= convs.pages}
                         onClick={() => setPage((p) => p + 1)}
                         className="btn-ghost px-3 py-1.5 text-xs"
                       >
-                        التالي
+                        {tr("التالي", "Next")}
                       </button>
                     </div>
                   )}

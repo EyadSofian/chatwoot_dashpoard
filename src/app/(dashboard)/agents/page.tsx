@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { AlertTriangle, Inbox, Reply, Timer, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Inbox, Reply, Timer, UserCheck, Users } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
-import type { AgentRow, AgentSummary } from "@/lib/reporting/agents";
+import type { AgentLeaderboard, AgentRow } from "@/lib/reporting/agents";
 import {
   Avatar,
   Badge,
@@ -29,7 +29,7 @@ export default function AgentsPage() {
 
   const { tr } = useLocale();
   const activeOnly = searchParams.get("activeOnly") === "true";
-  const { data, loading, error } = useApiData<{ rows: AgentRow[]; summary: AgentSummary }>("/api/agents");
+  const { data, loading, error } = useApiData<AgentLeaderboard>("/api/agents");
 
   const toggleActiveOnly = (on: boolean) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -66,7 +66,7 @@ export default function AgentsPage() {
         <div className="tnum">
           <span className="font-bold">{formatNumber(r.currentWorkload)}</span>
           <div className="text-2xs text-muted-foreground">
-            {r.currentOpen}/{r.currentPending}/{r.currentSnoozed}
+            {formatNumber(r.currentOpen)} {tr("مفتوحة", "open")} · {formatNumber(r.currentWaiting)} {tr("منتظرة", "waiting")}
           </div>
         </div>
       ),
@@ -155,13 +155,25 @@ export default function AgentsPage() {
         Chatwoot's 11 became the dashboard's 6.
       */}
       <div className="flex items-start gap-3 rounded-card border border-border bg-muted px-4 py-3">
-        <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {tr(
-            "«الحمل الحالي» هو الحالة الآن (open / pending / snoozed) ولا تؤثر عليه الفترة المختارة — وهو ما يطابق Chatwoot. «أُسندت في الفترة» تعتمد على تاريخ الإسناد. «أُنشئت في الفترة» تعتمد على تاريخ إنشاء المحادثة. ثلاثة أرقام مختلفة، ولا يصح دمجها في رقم واحد.",
-            "“Current workload” is the state right now (open / pending / snoozed) and ignores the selected period — it matches Chatwoot. “Assigned in period” is based on the assignment date. “Created in period” is based on the conversation creation date. Three different numbers that must not be merged into one.",
-          )}
-        </p>
+        {data?.live?.exact ? (
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success-fg" aria-hidden />
+        ) : (
+          <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        )}
+        <div className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+          <p>
+            {tr(
+              "«الحمل الحالي» هو الحالة الآن (open / pending / snoozed) ولا تؤثر عليه الفترة المختارة. «أُسندت في الفترة» تعتمد على تاريخ الإسناد، و«أُنشئت في الفترة» تعتمد على تاريخ الإنشاء.",
+              "Current workload is the live state (open / pending / snoozed) and ignores the selected period. Assigned in period uses the assignment date; created in period uses the creation date.",
+            )}
+          </p>
+          <p className={cn("mt-1 font-semibold", data?.live?.exact ? "text-success-fg" : "text-warning-fg")}>
+            {data?.live?.exact
+              ? tr("تم التحقق من الحمل الحالي مباشرةً من Chatwoot.", "Current workload verified directly against Chatwoot.")
+              : tr("تعذر التحقق الحي مع الفلاتر الحالية؛ المعروض من آخر مزامنة لقاعدة البيانات.", "Live verification is unavailable for these filters; showing the latest database snapshot.")}
+            {data?.live?.difference ? ` ${tr("فرق المزامنة", "Sync difference")}: ${formatNumber(data.live.difference)}.` : ""}
+          </p>
+        </div>
       </div>
 
       <Section
@@ -229,7 +241,7 @@ export default function AgentsPage() {
                         >
                           {r.name}
                         </div>
-                        {!r.hasActivity && <div className="text-2xs text-muted-foreground">لا يوجد نشاط</div>}
+                        {!r.hasActivity && <div className="text-2xs text-muted-foreground">{tr("لا يوجد نشاط", "No activity")}</div>}
                       </div>
                       {r.needsReplyNow > 0 && <Badge tone="danger">{formatNumber(r.needsReplyNow)} {tr("تحتاج رد", "need reply")}</Badge>}
                     </div>
@@ -238,15 +250,11 @@ export default function AgentsPage() {
                       className="mt-3"
                       items={[
                         { label: tr("الحمل الحالي", "Current"), value: formatNumber(r.currentWorkload), tone: "brand" },
+                        { label: tr("مفتوحة الآن", "Open now"), value: formatNumber(r.currentOpen) },
                         { label: tr("أُسندت", "Assigned"), value: formatNumber(r.assignedInPeriod) },
                         {
                           label: tr("متوسط الرد", "Avg response"),
                           value: r.avgResponseSeconds != null ? formatDurationShort(r.avgResponseSeconds) : "—",
-                        },
-                        {
-                          label: tr("خرق SLA", "SLA"),
-                          value: formatNumber(r.slaBreaches),
-                          tone: r.slaBreaches > 0 ? "danger" : "neutral",
                         },
                       ]}
                     />

@@ -111,7 +111,7 @@
 
   /* ── Buttons ── */
   .btn {
-    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold
            transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
@@ -126,13 +126,78 @@
 
   /* ── Inputs ── */
   .input {
-    @apply w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground
+    @apply w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground
            transition-colors placeholder:text-muted-foreground
            focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10;
   }
   .select-chip {
     @apply cursor-pointer appearance-none rounded-full border bg-surface py-1.5 pe-7 ps-3 text-xs font-medium
            text-foreground transition-colors focus:outline-none focus:ring-4 focus:ring-primary/10;
+  }
+}
+
+@media (max-width: 639px) {
+  .responsive-data-table {
+    overflow: visible;
+  }
+
+  .responsive-data-table table,
+  .responsive-data-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .responsive-data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .responsive-data-table tbody {
+    padding: 0.5rem;
+  }
+
+  .responsive-data-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    border: 1px solid rgb(var(--color-border));
+    border-radius: 0.5rem;
+    background: rgb(var(--color-surface));
+  }
+
+  .responsive-data-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .responsive-data-table tbody td {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0.75rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    border-bottom: 1px solid rgb(var(--color-border) / 0.65);
+  }
+
+  .responsive-data-table tbody td::before {
+    content: attr(data-label);
+    color: rgb(var(--color-muted-foreground));
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 0.9rem;
+    text-transform: uppercase;
+  }
+
+  .responsive-data-table tbody td:first-child {
+    grid-column: 1 / -1;
+    background: rgb(var(--color-surface-2));
   }
 }
 

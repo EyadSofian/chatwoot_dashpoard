@@ -1,16 +1,13 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { setFormatLocale } from "@/lib/format";
 
 /**
- * Bilingual UI — Arabic (RTL, default) and English (LTR).
- *
- * Strings are translated inline with `tr(ar, en)` rather than through a central
- * key dictionary. For a two-language app that keeps each translation beside the
- * markup it belongs to, so nothing drifts out of sync and there are no orphaned
- * keys. `dir` and `lang` flip on <html> automatically — every layout already
- * uses logical properties (start/end, ps/pe), so the mirror is free.
+ * English-only presentation. Existing call sites keep `tr(ar, en)` so the
+ * reporting code does not need a risky copy rewrite; this provider always
+ * selects the English string and forces LTR even if an old browser preference
+ * was stored by a previous bilingual release.
  */
 
 export type Locale = "ar" | "en";
@@ -18,21 +15,15 @@ export type Locale = "ar" | "en";
 interface LocaleContextValue {
   locale: Locale;
   dir: "rtl" | "ltr";
-  setLocale: (l: Locale) => void;
-  toggle: () => void;
   /** Pick the string for the active locale. */
   tr: (ar: string, en: string) => string;
 }
 
 const LocaleContext = createContext<LocaleContextValue>({
-  locale: "ar",
-  dir: "rtl",
-  setLocale: () => {},
-  toggle: () => {},
-  tr: (ar) => ar,
+  locale: "en",
+  dir: "ltr",
+  tr: (_ar, en) => en,
 });
-
-const STORAGE_KEY = "engosoft-analytics-locale";
 
 function apply(locale: Locale) {
   // Numbers/dates/durations follow the locale too — set before paint so the
@@ -45,36 +36,12 @@ function apply(locale: Locale) {
 }
 
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>("ar");
-
   useEffect(() => {
-    let initial: Locale = "ar";
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY) as Locale | null;
-      if (stored === "ar" || stored === "en") initial = stored;
-    } catch {
-      /* private mode */
-    }
-    setLocaleState(initial);
-    apply(initial);
+    apply("en");
   }, []);
-
-  const setLocale = useCallback((l: Locale) => {
-    setLocaleState(l);
-    apply(l);
-    try {
-      localStorage.setItem(STORAGE_KEY, l);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const toggle = useCallback(() => setLocale(locale === "ar" ? "en" : "ar"), [locale, setLocale]);
-
-  const tr = useCallback((ar: string, en: string) => (locale === "ar" ? ar : en), [locale]);
 
   return (
-    <LocaleContext.Provider value={{ locale, dir: locale === "ar" ? "rtl" : "ltr", setLocale, toggle, tr }}>
+    <LocaleContext.Provider value={{ locale: "en", dir: "ltr", tr: (_ar, en) => en }}>
       {children}
     </LocaleContext.Provider>
   );

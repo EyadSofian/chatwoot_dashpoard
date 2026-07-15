@@ -69,7 +69,7 @@ export default function ConversationsPage() {
   return (
     <div className="space-y-3">
       <Section
-        title={`المحادثات (${formatNumber(total)})`}
+        title={`${tr("المحادثات", "Conversations")} (${formatNumber(total)})`}
         action={
           <div className="flex items-center gap-2">
             <ColumnChooser columns={allColumns} hidden={hidden} setHidden={setHidden} />
@@ -94,7 +94,7 @@ export default function ConversationsPage() {
               emptyTitle={tr("لا توجد محادثات مطابقة", "No matching conversations")}
             />
             <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-              <span>صفحة {formatNumber(page)} من {formatNumber(totalPages)}</span>
+              <span>{tr("صفحة", "Page")} {formatNumber(page)} {tr("من", "of")} {formatNumber(totalPages)}</span>
               <div className="flex items-center gap-1">
                 <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="rounded-lg border border-border p-1.5 disabled:opacity-40 cursor-pointer" aria-label={tr("السابق", "Previous")}>
                   <ChevronRight className="h-4 w-4" />
@@ -114,11 +114,12 @@ export default function ConversationsPage() {
 }
 
 function ColumnChooser({ columns, hidden, setHidden }: { columns: Column<Row>[]; hidden: Set<string>; setHidden: (s: Set<string>) => void }) {
+  const { tr } = useLocale();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
       <button onClick={() => setOpen((o) => !o)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
-        <SlidersHorizontal className="h-3.5 w-3.5" /> الأعمدة
+        <SlidersHorizontal className="h-3.5 w-3.5" /> {tr("الأعمدة", "Columns")}
       </button>
       {open && (
         <>

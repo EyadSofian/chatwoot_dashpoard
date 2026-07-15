@@ -311,7 +311,7 @@ export default function AuditPage() {
 
       {selected !== null && (
         <Section
-          title={`تفاصيل التدقيق — ${data?.rows.find((r) => r.agentId === selected)?.name ?? `#${selected}`}`}
+          title={`${tr("تفاصيل التدقيق", "Audit detail")} — ${data?.rows.find((r) => r.agentId === selected)?.name ?? `#${selected}`}`}
           hint={tr("كل رقم محادثة، وسبب احتسابه أو استبعاده", "Every conversation id and why it counts or not")}
           action={
             <button onClick={() => setSelected(null)} className="btn-ghost rounded-full px-3 py-1.5 text-xs">

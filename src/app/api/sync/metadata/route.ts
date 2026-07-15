@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     /* empty body → sync all */
   }
   const parsed = schema.safeParse(body ?? {});
-  if (!parsed.success) return badRequest("مدخلات غير صحيحة", parsed.error.flatten());
+  if (!parsed.success) return badRequest("Invalid input", parsed.error.flatten());
 
   try {
     assertChatwootEnv();
@@ -51,6 +51,6 @@ export async function POST(request: Request) {
     const state = await syncEntities(new ChatwootClient(), parsed.data);
     return NextResponse.json({ ok: true, state });
   } catch (error) {
-    return serverError("فشلت مزامنة بيانات Chatwoot", (error as Error).message);
+    return serverError("Chatwoot metadata sync failed", (error as Error).message);
   }
 }

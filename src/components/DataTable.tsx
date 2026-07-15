@@ -34,7 +34,7 @@ export function DataTable<T>({
   if (!rows.length) return <EmptyState title={emptyTitle ?? tr("لا توجد بيانات", "No data")} />;
 
   return (
-    <div className="overflow-x-auto">
+    <div className="responsive-data-table overflow-x-auto">
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr>
@@ -81,6 +81,7 @@ export function DataTable<T>({
               {columns.map((c) => (
                 <td
                   key={c.key}
+                  data-label={c.header}
                   className={cn(
                     "whitespace-nowrap border-b border-border/70 px-5 py-3.5",
                     c.align === "end" ? "text-end" : c.align === "center" ? "text-center" : "text-start",

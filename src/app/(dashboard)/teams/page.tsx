@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, MessagesSquare, Reply, Timer, UserCheck, UsersRound } from "lucide-react";
+import { AlertTriangle, CheckCircle2, MessagesSquare, Reply, Timer, UserCheck, UsersRound } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
-import type { TeamRow, TeamsSummary } from "@/lib/reporting/teams";
+import type { TeamRow, TeamsReport } from "@/lib/reporting/teams";
 import { NO_TEAM_ID } from "@/lib/reporting/teams";
 import {
   Badge,
@@ -33,7 +33,7 @@ export default function TeamsPage() {
   const [openTeam, setOpenTeam] = useState<number | null>(null);
 
   const activeOnly = searchParams.get("activeOnly") === "true";
-  const { data, loading, error } = useApiData<{ rows: TeamRow[]; summary: TeamsSummary }>("/api/teams");
+  const { data, loading, error } = useApiData<TeamsReport>("/api/teams");
 
   const toggleActiveOnly = (on: boolean) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -68,7 +68,14 @@ export default function TeamsPage() {
       key: "currentWorkload",
       header: tr("الحمل الحالي", "Current"),
       align: "end",
-      render: (r) => <span className="tnum font-bold">{formatNumber(r.currentWorkload)}</span>,
+      render: (r) => (
+        <div className="tnum">
+          <span className="font-bold">{formatNumber(r.currentWorkload)}</span>
+          <div className="text-2xs text-muted-foreground">
+            {formatNumber(r.currentOpen)} {tr("مفتوحة", "open")} · {formatNumber(r.currentWaiting)} {tr("منتظرة", "waiting")}
+          </div>
+        </div>
+      ),
     },
     { key: "conversations", header: tr("محادثات الفترة", "Conversations (period)"), align: "end", render: (r) => num(r.conversations) },
     { key: "open", header: tr("مفتوحة", "Open"), align: "end", render: (r) => num(r.open) },
@@ -137,6 +144,21 @@ export default function TeamsPage() {
             icon={<Reply className="h-[18px] w-[18px]" />}
             tone="warning"
           />
+        </div>
+      )}
+
+      {data && (
+        <div className="flex items-start gap-3 rounded-card border border-border bg-muted px-4 py-3 text-xs">
+          <CheckCircle2
+            className={cn("mt-0.5 h-4 w-4 shrink-0", data.live?.exact ? "text-success-fg" : "text-warning-fg")}
+            aria-hidden
+          />
+          <p className={cn("leading-relaxed", data.live?.exact ? "text-success-fg" : "text-warning-fg")}>
+            {data.live?.exact
+              ? tr("تم التحقق من الحمل الحالي لكل تيم مباشرةً من Chatwoot.", "Current team workload verified directly against Chatwoot.")
+              : tr("التحقق الحي غير متاح مع الفلاتر الحالية؛ الحمل الحالي من آخر مزامنة.", "Live verification is unavailable for these filters; current workload uses the latest sync.")}
+            {data.live?.difference ? ` ${tr("فرق المزامنة", "Sync difference")}: ${formatNumber(data.live.difference)}.` : ""}
+          </p>
         </div>
       )}
 
@@ -216,7 +238,7 @@ export default function TeamsPage() {
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                             {r.department && <DepartmentPill department={r.department} />}
                             <span className="text-2xs text-muted-foreground">
-                              {formatNumber(r.memberCount)} عضو
+                              {formatNumber(r.memberCount)} {tr("عضو", "members")}
                             </span>
                           </div>
                         </div>
@@ -225,7 +247,7 @@ export default function TeamsPage() {
 
                       {!r.hasActivity ? (
                         <p className="mt-3 rounded-xl bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
-                          لا يوجد نشاط في الفترة المختارة
+                          {tr("لا يوجد نشاط في الفترة المختارة", "No activity in the selected period")}
                         </p>
                       ) : (
                         <StatStrip

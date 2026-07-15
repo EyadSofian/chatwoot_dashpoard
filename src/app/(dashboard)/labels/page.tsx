@@ -206,7 +206,7 @@ export default function LabelsPage() {
             </div>
           }
         >
-          مقارنة الـ Labels
+          {tr("مقارنة الـ Labels", "Label comparison")}
         </CardTitle>
 
         {loading ? (

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
@@ -13,7 +14,8 @@ import { useLocale } from "@/lib/i18n";
 interface AgentDetail {
   agent: { id: number; name: string | null; email: string | null; availability: string | null; role: string | null } | null;
   summary: AgentRow | null;
-  conversations: Array<{
+  conversations: {
+    rows: Array<{
     chatwootId: number;
     contactName: string | null;
     contactPhone: string | null;
@@ -26,19 +28,24 @@ interface AgentDetail {
     campaignLabel: string | null;
     lastMessageAt: string | null;
     slaFirstResponseBreached: boolean;
-  }>;
+    }>;
+    total: number;
+    page: number;
+    pages: number;
+  };
 }
 
 export default function AgentDetailPage() {
   const { tr } = useLocale();
   const params = useParams<{ id: string }>();
-  const { data, loading, error } = useApiData<AgentDetail>(`/api/agents/${params.id}`);
+  const [page, setPage] = useState(1);
+  const { data, loading, error } = useApiData<AgentDetail>(`/api/agents/${params.id}`, { page, pageSize: 50 });
 
   if (loading) return <LoadingBlock />;
   if (error) return <ErrorState message={error} />;
   const s = data?.summary;
 
-  const columns: Column<AgentDetail["conversations"][number]>[] = [
+  const columns: Column<AgentDetail["conversations"]["rows"][number]>[] = [
     { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "contactPhone", header: tr("الهاتف", "Phone"), render: (r) => <span className="tnum text-muted-foreground ltr-nums">{r.contactPhone || "—"}</span> },
     { key: "status", header: tr("الحالة", "Status"), render: (r) => <StatusPill status={r.status} /> },
@@ -57,7 +64,7 @@ export default function AgentDetailPage() {
           <Link href="/agents" className="mb-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <ArrowRight className="h-3.5 w-3.5" /> {tr("كل الموظفين", "All agents")}
           </Link>
-          <h2 className="text-xl font-bold">{data?.agent?.name || `موظف #${params.id}`}</h2>
+          <h2 className="text-xl font-bold">{data?.agent?.name || `${tr("موظف", "Agent")} #${params.id}`}</h2>
           <div className="text-xs text-muted-foreground">{data?.agent?.email || ""} {data?.agent?.availability ? `· ${data.agent.availability}` : ""}</div>
         </div>
       </div>
@@ -74,7 +81,20 @@ export default function AgentDetailPage() {
       )}
 
       <Section title={tr("محادثات الموظف", "Agent conversations")}>
-        <DataTable columns={columns} rows={data?.conversations ?? []} getKey={(r) => r.chatwootId} emptyTitle={tr("لا توجد محادثات في هذه الفترة", "No conversations in this period")} />
+        <DataTable columns={columns} rows={data?.conversations.rows ?? []} getKey={(r) => r.chatwootId} emptyTitle={tr("لا توجد محادثات في هذه الفترة", "No conversations in this period")} />
+        {data && data.conversations.pages > 1 && (
+          <div className="flex min-h-14 items-center justify-between gap-3 border-t border-border px-4 py-3 text-xs">
+            <button className="btn-ghost px-3 py-2" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
+              {tr("السابق", "Previous")}
+            </button>
+            <span className="text-muted-foreground tnum">
+              {tr("صفحة", "Page")} {formatNumber(data.conversations.page)} {tr("من", "of")} {formatNumber(data.conversations.pages)} · {formatNumber(data.conversations.total)}
+            </span>
+            <button className="btn-ghost px-3 py-2" disabled={page >= data.conversations.pages} onClick={() => setPage((value) => value + 1)}>
+              {tr("التالي", "Next")}
+            </button>
+          </div>
+        )}
       </Section>
     </div>
   );

@@ -46,8 +46,8 @@ const config: Config = {
         mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
       borderRadius: {
-        card: "1rem", // 16px — the soft bento radius
-        xl: "0.875rem",
+        card: "0.5rem",
+        xl: "0.5rem",
       },
       boxShadow: {
         // Soft, navy-tinted elevation — never a flat black shadow.

@@ -23,7 +23,7 @@ export async function requireSession(): Promise<
   if (!session) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "غير مصرح" }, { status: 401 }),
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     };
   }
   return { ok: true, session };
@@ -46,7 +46,7 @@ export async function requireSessionOrCron(
   if (isCronAuthorized(request)) return { ok: true };
   const session = await getSession();
   if (session) return { ok: true };
-  return { ok: false, response: NextResponse.json({ error: "غير مصرح" }, { status: 401 }) };
+  return { ok: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
 }
 
 export function badRequest(message: string, details?: unknown): NextResponse {

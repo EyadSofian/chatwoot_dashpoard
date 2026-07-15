@@ -13,7 +13,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ teamId: str
 
   const { teamId } = await ctx.params;
   const id = Number(teamId);
-  if (!Number.isFinite(id)) return badRequest("رقم تيم غير صحيح");
+  if (!Number.isFinite(id)) return badRequest("Invalid team id");
 
   const filters = parseFilters(new URL(request.url).searchParams);
   const detail = await getTeamDetail(id, filters);

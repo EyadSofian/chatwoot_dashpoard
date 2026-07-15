@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { fetchLiveCountsByEntity, supportsLiveFilters } from "@/lib/chatwoot/liveCounts";
 import { average, median } from "@/lib/format";
 import {
   resolveConversationTeam,
@@ -7,6 +9,7 @@ import {
   type TeamAttributionSource,
 } from "@/lib/metrics/teamAttribution";
 import { conversationWhere, type ReportFilters } from "./filters";
+import { andSql, conversationSqlConditions } from "./sqlFilters";
 
 /** The unattributed bucket — conversations we refuse to guess a team for. */
 export const NO_TEAM_ID = -1;
@@ -20,6 +23,10 @@ export interface TeamRow {
   activeMembers: number;
   /** Live: open + pending + snoozed on this team right now. No date bound. */
   currentWorkload: number;
+  /** Live open conversations, from the same snapshot as currentWorkload. */
+  currentOpen: number;
+  /** Live pending + snoozed conversations. */
+  currentWaiting: number;
   /** Conversations attributed to the team in the period (see teamAttribution). */
   conversations: number;
   open: number;
@@ -55,6 +62,10 @@ export interface TeamMemberRow {
   slaBreaches: number;
   /** Conversations still open right now — the load they are carrying. */
   openLoad: number;
+  /** Open + pending + snoozed right now. */
+  currentWorkload: number;
+  /** Pending + snoozed right now. */
+  currentWaiting: number;
   lastActivityAt: Date | null;
   hasActivity: boolean;
 }
@@ -64,6 +75,8 @@ export interface TeamsSummary {
   activeTeams: number;
   /** Live total across teams. */
   currentWorkload: number;
+  currentOpen: number;
+  currentWaiting: number;
   conversations: number;
   avgResponseSeconds: number | null;
   slaBreaches: number;
@@ -75,6 +88,15 @@ export interface TeamsReport {
   summary: TeamsSummary;
   /** How each conversation got its team — surfaced so the numbers stay auditable. */
   attribution: Record<TeamAttributionSource, number>;
+  live?: {
+    source: "chatwoot" | "database";
+    exact: boolean;
+    snapshotAt: string | null;
+    databaseTotal: number;
+    chatwootTotal: number | null;
+    difference: number | null;
+    reason: "live" | "unsupported_filters" | "chatwoot_unavailable";
+  };
 }
 
 /* ── Inputs (kept structural so the builder stays pure and testable) ────────── */
@@ -133,6 +155,8 @@ function emptyTeamRow(teamCwId: number, name: string, department: string | null,
     memberCount,
     activeMembers: 0,
     currentWorkload: 0,
+    currentOpen: 0,
+    currentWaiting: 0,
     conversations: 0,
     open: 0,
     pending: 0,
@@ -264,6 +288,8 @@ export function buildTeamsReport(input: {
     totalTeams: real.length,
     activeTeams: real.filter((r) => r.hasActivity).length,
     currentWorkload: all.reduce((n, r) => n + r.currentWorkload, 0),
+    currentOpen: all.reduce((n, r) => n + r.currentOpen, 0),
+    currentWaiting: all.reduce((n, r) => n + r.currentWaiting, 0),
     conversations: conversations.length,
     avgResponseSeconds: average(conversations.map((c) => c.responseSeconds).filter((v): v is number => v !== null)),
     slaBreaches: all.reduce((sum, r) => sum + r.slaBreaches, 0),
@@ -323,6 +349,8 @@ export function buildTeamMembers(input: {
       maxResponseSeconds: null,
       slaBreaches: 0,
       openLoad: 0,
+      currentWorkload: 0,
+      currentWaiting: 0,
       lastActivityAt: null,
       hasActivity: false,
     });
@@ -416,114 +444,302 @@ async function assignmentTeams(conversations: { chatwootId: number; teamCwId: nu
 }
 
 export async function getTeams(f: ReportFilters): Promise<TeamsReport> {
-  // The team filter must not shrink the roster — it narrows the conversations,
-  // and the caller still expects to see every team.
-  const where = conversationWhere(f);
+  const activeStatuses = ["open", "pending", "snoozed"].filter(
+    (status) => !f.status?.length || f.status.includes(status),
+  );
+  const cte = attributedConversationsCte(f);
+  const teamFilter = attributedTeamFilter(f.teamId);
 
-  const [teams, memberships, conversations, live] = await Promise.all([
-    prisma.team.findMany({ select: { id: true, name: true, department: true } }),
-    prisma.teamMembership.findMany({ select: { teamCwId: true, agentCwId: true } }),
-    prisma.conversation.findMany({ where, select: CONVERSATION_SELECT, take: 40000 }),
-    // Live workload: active statuses, every other filter applied, NO date bound.
-    prisma.conversation.groupBy({
-      by: ["teamCwId"],
-      where: {
-        ...conversationWhere(f, { ignoreDate: true }),
-        status: { in: ["open", "pending", "snoozed"] },
-        teamCwId: { not: null },
-      },
-      _count: { _all: true },
+  const [teams, memberships, periodRows, attributionRows, databaseCurrent] = await Promise.all([
+    prisma.team.findMany({
+      select: { id: true, name: true, department: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
     }),
+    prisma.teamMembership.findMany({ select: { teamCwId: true, agentCwId: true } }),
+    prisma.$queryRaw<TeamAggregate[]>(Prisma.sql`
+      ${cte}
+      SELECT
+        a."attributedTeamCwId" AS "teamId",
+        COUNT(*)::bigint AS "conversations",
+        COUNT(*) FILTER (WHERE a."status" = 'open')::bigint AS "open",
+        COUNT(*) FILTER (WHERE a."status" = 'pending')::bigint AS "pending",
+        COUNT(*) FILTER (WHERE a."status" = 'resolved')::bigint AS "resolved",
+        COUNT(*) FILTER (WHERE a."handledByHuman" = TRUE)::bigint AS "replied",
+        COUNT(*) FILTER (WHERE a."needsReply" = TRUE)::bigint AS "needsReply",
+        COUNT(*) FILTER (WHERE a."unreadCount" > 0)::bigint AS "unread",
+        COUNT(DISTINCT a."assigneeCwId") FILTER (WHERE a."assigneeCwId" IS NOT NULL)::bigint AS "activeMembers",
+        COUNT(a."responseSeconds")::bigint AS "responseCount",
+        COALESCE(SUM(a."responseSeconds"), 0)::bigint AS "responseTotal",
+        AVG(a."responseSeconds")::double precision AS "avgResponseSeconds",
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a."responseSeconds") FILTER (
+          WHERE a."responseSeconds" IS NOT NULL
+        )::double precision AS "medianResponseSeconds",
+        MAX(a."responseSeconds")::double precision AS "maxResponseSeconds",
+        AVG(a."conversationDurationSeconds")::double precision AS "avgResolutionSeconds",
+        COUNT(*) FILTER (WHERE a."slaFirstResponseBreached" = TRUE)::bigint AS "slaBreaches",
+        COUNT(*) FILTER (WHERE a."isCampaign" = TRUE AND a."handledByHuman" = TRUE)::bigint AS "campaignReplies",
+        COUNT(*) FILTER (WHERE a."botInvolved" = TRUE)::bigint AS "botHandoffs",
+        MAX(a."lastMessageAt") AS "lastActivityAt"
+      FROM "attributed" a
+      ${teamFilter}
+      GROUP BY a."attributedTeamCwId"
+    `),
+    prisma.$queryRaw<AttributionAggregate[]>(Prisma.sql`
+      ${cte}
+      SELECT a."attributionSource" AS "source", COUNT(*)::bigint AS "count"
+      FROM "attributed" a
+      ${teamFilter}
+      GROUP BY a."attributionSource"
+    `),
+    activeStatuses.length
+      ? prisma.conversation.groupBy({
+          by: ["teamCwId", "status"],
+          where: {
+            ...conversationWhere(f, { ignoreDate: true }),
+            teamCwId: { not: null },
+            status: { in: activeStatuses },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
   ]);
 
-  const currentByTeam = new Map<number, number>();
-  for (const g of live) if (g.teamCwId !== null) currentByTeam.set(g.teamCwId, g._count._all);
+  const memberCounts = new Map<number, number>();
+  for (const membership of memberships) {
+    memberCounts.set(membership.teamCwId, (memberCounts.get(membership.teamCwId) ?? 0) + 1);
+  }
 
-  const assignmentTeamByConversation = await assignmentTeams(conversations);
+  const rows = new Map<number, TeamRow>();
+  for (const team of teams) {
+    rows.set(team.id, emptyTeamRow(team.id, team.name || `#${team.id}`, team.department, memberCounts.get(team.id) ?? 0));
+  }
 
-  return buildTeamsReport({
-    teams,
-    memberships,
-    conversations,
-    activeOnly: f.activeOnly,
-    assignmentTeamByConversation,
-    currentByTeam,
+  for (const aggregate of periodRows) {
+    const id = aggregate.teamId;
+    let row = rows.get(id);
+    if (!row) {
+      row = emptyTeamRow(
+        id,
+        id === NO_TEAM_ID ? NO_TEAM_LABEL : `#${id}`,
+        null,
+        memberCounts.get(id) ?? 0,
+      );
+      rows.set(id, row);
+    }
+    row.conversations = asNumber(aggregate.conversations);
+    row.open = asNumber(aggregate.open);
+    row.pending = asNumber(aggregate.pending);
+    row.resolved = asNumber(aggregate.resolved);
+    row.replied = asNumber(aggregate.replied);
+    row.needsReply = asNumber(aggregate.needsReply);
+    row.unread = asNumber(aggregate.unread);
+    row.activeMembers = asNumber(aggregate.activeMembers);
+    row.avgResponseSeconds = nullableNumber(aggregate.avgResponseSeconds);
+    row.medianResponseSeconds = nullableNumber(aggregate.medianResponseSeconds);
+    row.maxResponseSeconds = nullableNumber(aggregate.maxResponseSeconds);
+    row.avgResolutionSeconds = nullableNumber(aggregate.avgResolutionSeconds);
+    row.slaBreaches = asNumber(aggregate.slaBreaches);
+    row.campaignReplies = asNumber(aggregate.campaignReplies);
+    row.botHandoffs = asNumber(aggregate.botHandoffs);
+    row.lastActivityAt = aggregate.lastActivityAt;
+  }
+
+  for (const group of databaseCurrent) {
+    if (group.teamCwId === null) continue;
+    const row = rows.get(group.teamCwId);
+    if (!row) continue;
+    const count = group._count._all;
+    row.currentWorkload += count;
+    if (group.status === "open") row.currentOpen += count;
+    else row.currentWaiting += count;
+  }
+
+  const databaseTotal = [...rows.values()].reduce((sum, row) => sum + row.currentWorkload, 0);
+  const liveSupported = supportsLiveFilters(f);
+  const liveCounts = liveSupported
+    ? await fetchLiveCountsByEntity("team", teams.map((team) => team.id), f).catch(() => null)
+    : null;
+  if (liveCounts) {
+    for (const count of liveCounts.counts) {
+      const row = rows.get(count.id);
+      if (!row) continue;
+      row.currentOpen = count.open;
+      row.currentWaiting = Math.max(0, count.active - count.open);
+      row.currentWorkload = count.active;
+    }
+  }
+
+  const attribution: Record<TeamAttributionSource, number> = {
+    conversation: 0,
+    assignment: 0,
+    membership: 0,
+    none: 0,
+  };
+  for (const aggregate of attributionRows) {
+    if (aggregate.source in attribution) {
+      attribution[aggregate.source as TeamAttributionSource] = asNumber(aggregate.count);
+    }
+  }
+
+  const allRows = [...rows.values()];
+  for (const row of allRows) row.hasActivity = row.conversations > 0 || row.currentWorkload > 0;
+
+  const responseCount = periodRows.reduce((sum, row) => sum + asNumber(row.responseCount), 0);
+  const responseTotal = periodRows.reduce((sum, row) => sum + asNumber(row.responseTotal), 0);
+  const realRows = allRows.filter((row) => row.teamCwId !== NO_TEAM_ID);
+  const summary: TeamsSummary = {
+    totalTeams: realRows.length,
+    activeTeams: realRows.filter((row) => row.hasActivity).length,
+    currentWorkload: allRows.reduce((sum, row) => sum + row.currentWorkload, 0),
+    currentOpen: allRows.reduce((sum, row) => sum + row.currentOpen, 0),
+    currentWaiting: allRows.reduce((sum, row) => sum + row.currentWaiting, 0),
+    conversations: allRows.reduce((sum, row) => sum + row.conversations, 0),
+    avgResponseSeconds: responseCount ? responseTotal / responseCount : null,
+    slaBreaches: allRows.reduce((sum, row) => sum + row.slaBreaches, 0),
+    needsReply: allRows.reduce((sum, row) => sum + row.needsReply, 0),
+  };
+
+  const visible = f.activeOnly ? allRows.filter((row) => row.hasActivity) : allRows;
+  visible.sort((a, b) => {
+    if (a.teamCwId === NO_TEAM_ID) return 1;
+    if (b.teamCwId === NO_TEAM_ID) return -1;
+    if (a.hasActivity !== b.hasActivity) return a.hasActivity ? -1 : 1;
+    if (b.currentWorkload !== a.currentWorkload) return b.currentWorkload - a.currentWorkload;
+    if (b.conversations !== a.conversations) return b.conversations - a.conversations;
+    return a.name.localeCompare(b.name, "en");
   });
+
+  const chatwootTotal = liveCounts ? liveCounts.counts.reduce((sum, count) => sum + count.active, 0) : null;
+  return {
+    rows: visible,
+    summary,
+    attribution,
+    live: {
+      source: liveCounts ? "chatwoot" : "database",
+      exact: Boolean(liveCounts),
+      snapshotAt: liveCounts?.snapshotAt ?? null,
+      databaseTotal,
+      chatwootTotal,
+      difference: chatwootTotal === null ? null : chatwootTotal - databaseTotal,
+      reason: liveCounts ? "live" : liveSupported ? "chatwoot_unavailable" : "unsupported_filters",
+    },
+  };
 }
 
 /** One team: its row, its members, and how it trended. */
 export async function getTeamDetail(teamId: number, f: ReportFilters) {
-  const [team, memberships, allTeams, agents] = await Promise.all([
+  const [team, report, members] = await Promise.all([
     prisma.team.findUnique({ where: { id: teamId } }),
-    prisma.teamMembership.findMany({ select: { teamCwId: true, agentCwId: true } }),
-    prisma.team.findMany({ select: { id: true, name: true, department: true } }),
-    prisma.agent.findMany({ select: { id: true, name: true, email: true, availability: true } }),
+    getTeams({ ...f, teamId: [teamId], activeOnly: false }),
+    getTeamMembers(teamId, f),
   ]);
-
-  const conversations = await teamConversationRows(teamId, f, memberships, allTeams);
-
-  const report = buildTeamsReport({
-    teams: allTeams,
-    memberships,
-    conversations,
-    assignmentTeamByConversation: new Map(),
-  });
   const row = report.rows.find((r) => r.teamCwId === teamId) ?? null;
-
-  const memberIds = membersByTeam(memberships).get(teamId) ?? [];
-  const members = buildTeamMembers({
-    memberIds,
-    agents,
-    conversations,
-    activeOnly: f.activeOnly,
-  });
-
-  return { team, row, members, conversationCount: conversations.length };
-}
-
-/**
- * The conversations that belong to one team, under the same attribution rules
- * the leaderboard uses — so a team's drill-down always matches its row.
- */
-async function teamConversationRows(
-  teamId: number,
-  f: ReportFilters,
-  memberships: { teamCwId: number; agentCwId: number }[],
-  _teams: TeamRecord[],
-): Promise<TeamConversation[]> {
-  const byAgent = membershipIndex(memberships);
-  const soleMembers = [...byAgent.entries()]
-    .filter(([, teams]) => teams.length === 1 && teams[0] === teamId)
-    .map(([agentId]) => agentId);
-
-  const where = conversationWhere({ ...f, teamId: undefined });
-
-  // Direct hits, plus the ones with no team whose assignee belongs only here.
-  const candidates = await prisma.conversation.findMany({
-    where: {
-      ...where,
-      OR: [
-        { teamCwId: teamId },
-        ...(soleMembers.length ? [{ teamCwId: null, assigneeCwId: { in: soleMembers } }] : []),
-      ],
-    },
-    select: CONVERSATION_SELECT,
-    take: 40000,
-  });
-
-  return candidates;
+  return { team, row, members, conversationCount: row?.conversations ?? 0, live: report.live };
 }
 
 export async function getTeamMembers(teamId: number, f: ReportFilters): Promise<TeamMemberRow[]> {
-  const [memberships, agents, teams] = await Promise.all([
-    prisma.teamMembership.findMany({ select: { teamCwId: true, agentCwId: true } }),
-    prisma.agent.findMany({ select: { id: true, name: true, email: true, availability: true } }),
-    prisma.team.findMany({ select: { id: true, name: true, department: true } }),
+  const scoped = { ...f, teamId: undefined };
+  const cte = attributedConversationsCte(scoped);
+  const activeStatuses = ["open", "pending", "snoozed"].filter(
+    (status) => !f.status?.length || f.status.includes(status),
+  );
+  const [memberships, aggregates, databaseCurrent] = await Promise.all([
+    prisma.teamMembership.findMany({
+      where: { teamCwId: teamId },
+      select: {
+        agentCwId: true,
+        agent: { select: { id: true, name: true, email: true, availability: true } },
+      },
+    }),
+    prisma.$queryRaw<TeamMemberAggregate[]>(Prisma.sql`
+      ${cte}
+      SELECT
+        a."assigneeCwId" AS "agentId",
+        MAX(a."assigneeName") AS "fallbackName",
+        COUNT(*)::bigint AS "assigned",
+        COUNT(*) FILTER (WHERE a."handledByHuman" = TRUE)::bigint AS "replied",
+        COUNT(*) FILTER (WHERE a."needsReply" = TRUE)::bigint AS "needsReply",
+        COUNT(*) FILTER (WHERE a."status" = 'open')::bigint AS "open",
+        COUNT(*) FILTER (WHERE a."status" = 'resolved')::bigint AS "resolved",
+        AVG(a."responseSeconds")::double precision AS "avgResponseSeconds",
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a."responseSeconds") FILTER (
+          WHERE a."responseSeconds" IS NOT NULL
+        )::double precision AS "medianResponseSeconds",
+        MAX(a."responseSeconds")::double precision AS "maxResponseSeconds",
+        COUNT(*) FILTER (WHERE a."slaFirstResponseBreached" = TRUE)::bigint AS "slaBreaches",
+        MAX(a."lastMessageAt") AS "lastActivityAt"
+      FROM "attributed" a
+      WHERE a."attributedTeamCwId" = ${teamId} AND a."assigneeCwId" IS NOT NULL
+      GROUP BY a."assigneeCwId"
+    `),
+    activeStatuses.length
+      ? prisma.conversation.groupBy({
+          by: ["assigneeCwId", "status"],
+          where: {
+            ...conversationWhere({ ...f, teamId: [teamId] }, { ignoreDate: true }),
+            assigneeCwId: { not: null },
+            status: { in: activeStatuses },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
   ]);
-  const conversations = await teamConversationRows(teamId, f, memberships, teams);
-  const memberIds = membersByTeam(memberships).get(teamId) ?? [];
 
-  return buildTeamMembers({ memberIds, agents, conversations, activeOnly: f.activeOnly });
+  const rows = new Map<number, TeamMemberRow>();
+  for (const membership of memberships) rows.set(membership.agentCwId, emptyMemberRow(membership.agent));
+  for (const aggregate of aggregates) {
+    if (aggregate.agentId === null) continue;
+    let row = rows.get(aggregate.agentId);
+    if (!row) {
+      row = emptyMemberRow({ id: aggregate.agentId, name: aggregate.fallbackName, email: null, availability: null });
+      rows.set(aggregate.agentId, row);
+    }
+    row.assigned = asNumber(aggregate.assigned);
+    row.replied = asNumber(aggregate.replied);
+    row.needsReply = asNumber(aggregate.needsReply);
+    row.open = asNumber(aggregate.open);
+    row.resolved = asNumber(aggregate.resolved);
+    row.avgResponseSeconds = nullableNumber(aggregate.avgResponseSeconds);
+    row.medianResponseSeconds = nullableNumber(aggregate.medianResponseSeconds);
+    row.maxResponseSeconds = nullableNumber(aggregate.maxResponseSeconds);
+    row.slaBreaches = asNumber(aggregate.slaBreaches);
+    row.lastActivityAt = aggregate.lastActivityAt;
+  }
+
+  for (const group of databaseCurrent) {
+    if (group.assigneeCwId === null) continue;
+    const row = rows.get(group.assigneeCwId);
+    if (!row) continue;
+    const count = group._count._all;
+    row.currentWorkload += count;
+    if (group.status === "open") row.openLoad += count;
+    else row.currentWaiting += count;
+  }
+
+  const liveSupported = supportsLiveFilters({ ...f, teamId: [teamId] });
+  const liveCounts = liveSupported
+    ? await fetchLiveCountsByEntity("agent", [...rows.keys()], { ...f, teamId: [teamId] }).catch(() => null)
+    : null;
+  if (liveCounts) {
+    for (const count of liveCounts.counts) {
+      const row = rows.get(count.id);
+      if (!row) continue;
+      row.openLoad = count.open;
+      row.currentWaiting = Math.max(0, count.active - count.open);
+      row.currentWorkload = count.active;
+    }
+  }
+
+  const allRows = [...rows.values()];
+  for (const row of allRows) row.hasActivity = row.assigned > 0 || row.currentWorkload > 0;
+  const visible = f.activeOnly ? allRows.filter((row) => row.hasActivity) : allRows;
+  visible.sort((a, b) => {
+    if (a.hasActivity !== b.hasActivity) return a.hasActivity ? -1 : 1;
+    if (b.currentWorkload !== a.currentWorkload) return b.currentWorkload - a.currentWorkload;
+    if (b.assigned !== a.assigned) return b.assigned - a.assigned;
+    return a.name.localeCompare(b.name, "en");
+  });
+  return visible;
 }
 
 /** Paginated conversation list for a team (optionally one member of it). */
@@ -532,54 +748,186 @@ export async function getTeamConversations(
   f: ReportFilters,
   page = 1,
   pageSize = 50,
+  memberId?: number,
 ) {
-  const memberships = await prisma.teamMembership.findMany({ select: { teamCwId: true, agentCwId: true } });
-  const byAgent = membershipIndex(memberships);
-  const soleMembers = [...byAgent.entries()]
-    .filter(([, teams]) => teams.length === 1 && teams[0] === teamId)
-    .map(([agentId]) => agentId);
-
-  const base = conversationWhere({ ...f, teamId: undefined });
-  const where = {
-    ...base,
-    OR: [
-      { teamCwId: teamId },
-      ...(soleMembers.length ? [{ teamCwId: null, assigneeCwId: { in: soleMembers } }] : []),
-    ],
-  };
-
   const size = Math.min(Math.max(pageSize, 1), 200);
-  const skip = (Math.max(page, 1) - 1) * size;
+  const currentPage = Math.max(page, 1);
+  const skip = (currentPage - 1) * size;
+  const scoped = {
+    ...f,
+    teamId: undefined,
+    agentId: memberId ? [memberId] : f.agentId,
+  };
+  const cte = attributedConversationsCte(scoped);
 
-  const [total, rows] = await Promise.all([
-    prisma.conversation.count({ where }),
-    prisma.conversation.findMany({
-      where,
-      orderBy: { lastMessageAt: "desc" },
-      skip,
-      take: size,
-      select: {
-        chatwootId: true,
-        contactName: true,
-        contactPhone: true,
-        status: true,
-        department: true,
-        inboxName: true,
-        assigneeName: true,
-        assigneeCwId: true,
-        needsReply: true,
-        responseSeconds: true,
-        conversationDurationSeconds: true,
-        campaignLabel: true,
-        botInvolved: true,
-        slaFirstResponseBreached: true,
-        lastMessageAt: true,
-        createdAtCw: true,
-      },
-    }),
+  const [totalRows, rows] = await Promise.all([
+    prisma.$queryRaw<Array<{ count: bigint | number | string }>>(Prisma.sql`
+      ${cte}
+      SELECT COUNT(*)::bigint AS "count"
+      FROM "attributed" a
+      WHERE a."attributedTeamCwId" = ${teamId}
+    `),
+    prisma.$queryRaw<TeamConversationListRow[]>(Prisma.sql`
+      ${cte}
+      SELECT
+        a."chatwootId",
+        a."contactName",
+        a."contactPhone",
+        a."status",
+        a."department",
+        a."inboxName",
+        a."assigneeName",
+        a."assigneeCwId",
+        a."needsReply",
+        a."responseSeconds",
+        a."conversationDurationSeconds",
+        a."campaignLabel",
+        a."botInvolved",
+        a."slaFirstResponseBreached",
+        a."lastMessageAt",
+        a."createdAtCw"
+      FROM "attributed" a
+      WHERE a."attributedTeamCwId" = ${teamId}
+      ORDER BY COALESCE(a."lastMessageAt", a."createdAtCw") DESC NULLS LAST, a."chatwootId" DESC
+      LIMIT ${size} OFFSET ${skip}
+    `),
   ]);
+  const total = asNumber(totalRows[0]?.count);
+  return { rows, total, page: currentPage, pageSize: size, pages: Math.ceil(total / size) };
+}
 
-  return { rows, total, page: Math.max(page, 1), pageSize: size, pages: Math.ceil(total / size) };
+function attributedConversationsCte(f: ReportFilters): Prisma.Sql {
+  const conditions = conversationSqlConditions(f, { alias: "c", ignoreTeam: true });
+  return Prisma.sql`
+    WITH "attributed" AS (
+      SELECT
+        c.*,
+        COALESCE(c."teamCwId", latest."teamCwId", sole."teamCwId", ${NO_TEAM_ID})::int AS "attributedTeamCwId",
+        CASE
+          WHEN c."teamCwId" IS NOT NULL THEN 'conversation'
+          WHEN latest."teamCwId" IS NOT NULL THEN 'assignment'
+          WHEN sole."teamCwId" IS NOT NULL THEN 'membership'
+          ELSE 'none'
+        END AS "attributionSource"
+      FROM "conversations" c
+      LEFT JOIN LATERAL (
+        SELECT i."teamCwId"
+        FROM "assignment_intervals" i
+        WHERE i."conversationCwId" = c."chatwootId" AND i."teamCwId" IS NOT NULL
+        ORDER BY i."startedAt" DESC
+        LIMIT 1
+      ) latest ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT MIN(m."teamCwId")::int AS "teamCwId"
+        FROM "team_memberships" m
+        WHERE m."agentCwId" = c."assigneeCwId"
+        HAVING COUNT(*) = 1
+      ) sole ON TRUE
+      ${andSql(conditions)}
+    )
+  `;
+}
+
+function attributedTeamFilter(teamIds?: number[]): Prisma.Sql {
+  return teamIds?.length
+    ? Prisma.sql`WHERE a."attributedTeamCwId" IN (${Prisma.join(teamIds)})`
+    : Prisma.empty;
+}
+
+function emptyMemberRow(agent: AgentRecord): TeamMemberRow {
+  return {
+    agentId: agent.id,
+    name: agent.name || `#${agent.id}`,
+    email: agent.email,
+    availability: agent.availability,
+    assigned: 0,
+    replied: 0,
+    needsReply: 0,
+    open: 0,
+    resolved: 0,
+    avgResponseSeconds: null,
+    medianResponseSeconds: null,
+    maxResponseSeconds: null,
+    slaBreaches: 0,
+    openLoad: 0,
+    currentWorkload: 0,
+    currentWaiting: 0,
+    lastActivityAt: null,
+    hasActivity: false,
+  };
+}
+
+interface TeamAggregate {
+  teamId: number;
+  conversations: bigint | number | string;
+  open: bigint | number | string;
+  pending: bigint | number | string;
+  resolved: bigint | number | string;
+  replied: bigint | number | string;
+  needsReply: bigint | number | string;
+  unread: bigint | number | string;
+  activeMembers: bigint | number | string;
+  responseCount: bigint | number | string;
+  responseTotal: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  medianResponseSeconds: number | string | null;
+  maxResponseSeconds: number | string | null;
+  avgResolutionSeconds: number | string | null;
+  slaBreaches: bigint | number | string;
+  campaignReplies: bigint | number | string;
+  botHandoffs: bigint | number | string;
+  lastActivityAt: Date | null;
+}
+
+interface AttributionAggregate {
+  source: string;
+  count: bigint | number | string;
+}
+
+interface TeamMemberAggregate {
+  agentId: number | null;
+  fallbackName: string | null;
+  assigned: bigint | number | string;
+  replied: bigint | number | string;
+  needsReply: bigint | number | string;
+  open: bigint | number | string;
+  resolved: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  medianResponseSeconds: number | string | null;
+  maxResponseSeconds: number | string | null;
+  slaBreaches: bigint | number | string;
+  lastActivityAt: Date | null;
+}
+
+interface TeamConversationListRow {
+  chatwootId: number;
+  contactName: string | null;
+  contactPhone: string | null;
+  status: string | null;
+  department: string | null;
+  inboxName: string | null;
+  assigneeName: string | null;
+  assigneeCwId: number | null;
+  needsReply: boolean;
+  responseSeconds: number | null;
+  conversationDurationSeconds: number | null;
+  campaignLabel: string | null;
+  botInvolved: boolean;
+  slaFirstResponseBreached: boolean;
+  lastMessageAt: Date | null;
+  createdAtCw: Date | null;
+}
+
+function asNumber(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: bigint | number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** Which teams an agent belongs to — for the agent detail screen. */

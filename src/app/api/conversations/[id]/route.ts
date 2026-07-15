@@ -10,8 +10,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   if (!auth.ok) return auth.response;
   const { id } = await ctx.params;
   const chatwootId = Number(id);
-  if (!Number.isFinite(chatwootId)) return badRequest("معرّف المحادثة غير صحيح");
+  if (!Number.isFinite(chatwootId)) return badRequest("Invalid conversation id");
   const data = await getConversationDetail(chatwootId);
-  if (!data) return NextResponse.json({ error: "غير موجودة" }, { status: 404 });
+  if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(data);
 }

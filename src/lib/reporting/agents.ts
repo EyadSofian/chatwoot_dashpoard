@@ -1,6 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { fetchLiveCountsByEntity, supportsLiveFilters } from "@/lib/chatwoot/liveCounts";
 import { average, median, percentile } from "@/lib/format";
 import { conversationWhere, type ReportFilters } from "./filters";
+import { andSql, conversationSqlConditions } from "./sqlFilters";
 
 /**
  * Agent metrics, with the three things that used to be one number pulled apart.
@@ -37,6 +40,8 @@ export interface AgentRow {
   currentOpen: number;
   currentPending: number;
   currentSnoozed: number;
+  /** pending + snoozed from the same live Chatwoot count snapshot. */
+  currentWaiting: number;
   /** open + pending + snoozed. Matches Chatwoot's current assignment view. */
   currentWorkload: number;
   /** Customer spoke last and no human has answered — right now, not in a window. */
@@ -85,6 +90,15 @@ export interface AgentSummary {
 export interface AgentLeaderboard {
   rows: AgentRow[];
   summary: AgentSummary;
+  live?: {
+    source: "chatwoot" | "database";
+    exact: boolean;
+    snapshotAt: string | null;
+    databaseTotal: number;
+    chatwootTotal: number | null;
+    difference: number | null;
+    reason: "live" | "unsupported_filters" | "chatwoot_unavailable";
+  };
 }
 
 /* ── Structural inputs, so the merge stays pure and testable ────────────────── */
@@ -132,6 +146,7 @@ function emptyRow(agentId: number, info: Partial<AgentRecord> & { fallbackName?:
     currentOpen: 0,
     currentPending: 0,
     currentSnoozed: 0,
+    currentWaiting: 0,
     currentWorkload: 0,
     needsReplyNow: 0,
     assignedInPeriod: 0,
@@ -195,6 +210,7 @@ export function buildAgentLeaderboard(input: {
     else if (c.status === "snoozed") r.currentSnoozed++;
     else continue; // resolved is not workload
     r.currentWorkload++;
+    r.currentWaiting = r.currentPending + r.currentSnoozed;
     if (c.needsReply) r.needsReplyNow++;
   }
 
@@ -277,92 +293,251 @@ export function buildAgentLeaderboard(input: {
 }
 
 export async function getAgentLeaderboard(f: ReportFilters): Promise<AgentLeaderboard> {
-  // Non-date filters (team, inbox, label, department…) still narrow the live
-  // workload — only the DATE is dropped, because "right now" has no date.
+  const activeStatuses = ACTIVE_STATUSES.filter((status) => !f.status?.length || f.status.includes(status));
+  const agentWhere = f.agentId?.length ? { id: { in: f.agentId } } : {};
+  const assigneeScope = f.agentId?.length ? { in: f.agentId } : { not: null as null };
   const liveWhere = conversationWhere(f, { ignoreDate: true });
   const periodWhere = conversationWhere(f);
 
-  const agentWhere = f.agentId?.length ? { id: { in: f.agentId } } : {};
-  const assigneeScope = f.agentId?.length ? { in: f.agentId } : undefined;
+  const intervalConditions = [
+    Prisma.sql`i."startedAt" >= ${f.from}`,
+    Prisma.sql`i."startedAt" <= ${f.to}`,
+    ...(f.agentId?.length ? [Prisma.sql`i."assigneeCwId" IN (${Prisma.join(f.agentId)})`] : []),
+    ...(f.teamId?.length
+      ? [Prisma.sql`COALESCE(i."teamCwId", c."teamCwId") IN (${Prisma.join(f.teamId)})`]
+      : []),
+    ...conversationSqlConditions(f, {
+      alias: "c",
+      ignoreDate: true,
+      ignoreAgent: true,
+      ignoreTeam: true,
+    }),
+  ];
 
-  const [agents, current, intervals, created, resolved] = await Promise.all([
+  const [agents, current, currentNeedsReply, created, resolved, intervalRows] = await Promise.all([
     prisma.agent.findMany({
       where: agentWhere,
       select: { id: true, name: true, email: true, availability: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
     }),
-
-    // Current workload: active statuses, NO date bound.
-    prisma.conversation.findMany({
-      where: {
-        ...liveWhere,
-        status: { in: [...ACTIVE_STATUSES] },
-        assigneeCwId: assigneeScope ?? { not: null },
-      },
-      select: { assigneeCwId: true, status: true, needsReply: true },
-      take: 40000,
+    activeStatuses.length
+      ? prisma.conversation.groupBy({
+          by: ["assigneeCwId", "status"],
+          where: {
+            ...liveWhere,
+            assigneeCwId: assigneeScope,
+            status: { in: [...activeStatuses] },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+    activeStatuses.length
+      ? prisma.conversation.groupBy({
+          by: ["assigneeCwId"],
+          where: {
+            ...liveWhere,
+            assigneeCwId: assigneeScope,
+            status: { in: [...activeStatuses] },
+            needsReply: true,
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+    prisma.conversation.groupBy({
+      by: ["assigneeCwId"],
+      where: { ...periodWhere, assigneeCwId: assigneeScope },
+      _count: { _all: true },
     }),
-
-    // Period assignment activity, joined to the conversation so the other
-    // filters still apply.
-    prisma.assignmentInterval.findMany({
-      where: {
-        startedAt: { gte: f.from, lte: f.to },
-        ...(assigneeScope ? { assigneeCwId: assigneeScope } : {}),
-        conversation: liveWhere,
-      },
-      select: {
-        assigneeCwId: true,
-        conversationCwId: true,
-        responseSeconds: true,
-        responded: true,
-        conversation: { select: { slaFirstResponseBreached: true } },
-      },
-      take: 100000,
-    }),
-
-    // Acquisition.
-    prisma.conversation.findMany({
-      where: { ...periodWhere, assigneeCwId: assigneeScope ?? { not: null } },
-      select: { assigneeCwId: true },
-      take: 40000,
-    }),
-
-    // Resolved in the period. Anchored on resolvedAt, not on creation.
-    prisma.conversation.findMany({
+    prisma.conversation.groupBy({
+      by: ["assigneeCwId"],
       where: {
         ...liveWhere,
         resolvedAt: { gte: f.from, lte: f.to },
-        assigneeCwId: assigneeScope ?? { not: null },
+        assigneeCwId: assigneeScope,
       },
-      select: { assigneeCwId: true },
-      take: 40000,
+      _count: { _all: true },
     }),
+    prisma.$queryRaw<IntervalAggregate[]>(Prisma.sql`
+      SELECT
+        CASE WHEN GROUPING(i."assigneeCwId") = 1 THEN NULL ELSE i."assigneeCwId" END AS "agentId",
+        GROUPING(i."assigneeCwId")::int AS "isSummary",
+        COUNT(*)::bigint AS "assignmentEvents",
+        COUNT(DISTINCT i."conversationCwId")::bigint AS "assignedInPeriod",
+        COUNT(*) FILTER (
+          WHERE i."responded" = TRUE AND i."responseSeconds" IS NOT NULL
+        )::bigint AS "responseCount",
+        AVG(i."responseSeconds") FILTER (
+          WHERE i."responded" = TRUE AND i."responseSeconds" IS NOT NULL
+        )::double precision AS "avgResponseSeconds",
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY i."responseSeconds") FILTER (
+          WHERE i."responded" = TRUE AND i."responseSeconds" IS NOT NULL
+        )::double precision AS "medianResponseSeconds",
+        PERCENTILE_DISC(0.9) WITHIN GROUP (ORDER BY i."responseSeconds") FILTER (
+          WHERE i."responded" = TRUE AND i."responseSeconds" IS NOT NULL
+        )::double precision AS "p90ResponseSeconds",
+        MAX(i."responseSeconds") FILTER (
+          WHERE i."responded" = TRUE AND i."responseSeconds" IS NOT NULL
+        )::double precision AS "maxResponseSeconds",
+        COUNT(DISTINCT CASE
+          WHEN c."slaFirstResponseBreached" = TRUE THEN i."conversationCwId"
+        END)::bigint AS "slaBreaches"
+      FROM "assignment_intervals" i
+      INNER JOIN "conversations" c ON c."chatwootId" = i."conversationCwId"
+      ${andSql(intervalConditions)}
+      GROUP BY GROUPING SETS ((i."assigneeCwId"), ())
+    `),
   ]);
 
-  return buildAgentLeaderboard({
-    agents,
-    current,
-    intervals: intervals.map((i) => ({
-      assigneeCwId: i.assigneeCwId,
-      conversationCwId: i.conversationCwId,
-      responseSeconds: i.responseSeconds,
-      responded: i.responded,
-      slaBreached: i.conversation?.slaFirstResponseBreached ?? false,
-    })),
-    created,
-    resolved,
-    activeOnly: f.activeOnly,
+  const rows = new Map<number, AgentRow>();
+  const ensure = (agentId: number) => {
+    let row = rows.get(agentId);
+    if (!row) {
+      row = emptyRow(agentId, {});
+      rows.set(agentId, row);
+    }
+    return row;
+  };
+
+  for (const agent of agents) rows.set(agent.id, emptyRow(agent.id, agent));
+
+  for (const group of current) {
+    if (group.assigneeCwId === null) continue;
+    const row = ensure(group.assigneeCwId);
+    const count = group._count._all;
+    if (group.status === "open") row.currentOpen = count;
+    if (group.status === "pending") row.currentPending = count;
+    if (group.status === "snoozed") row.currentSnoozed = count;
+  }
+  for (const row of rows.values()) {
+    row.currentWaiting = row.currentPending + row.currentSnoozed;
+    row.currentWorkload = row.currentOpen + row.currentWaiting;
+  }
+  for (const group of currentNeedsReply) {
+    if (group.assigneeCwId !== null) ensure(group.assigneeCwId).needsReplyNow = group._count._all;
+  }
+  for (const group of created) {
+    if (group.assigneeCwId !== null) ensure(group.assigneeCwId).createdInPeriod = group._count._all;
+  }
+  for (const group of resolved) {
+    if (group.assigneeCwId !== null) ensure(group.assigneeCwId).resolvedWhileAssigned = group._count._all;
+  }
+
+  let intervalSummary: IntervalAggregate | undefined;
+  for (const aggregate of intervalRows) {
+    if (aggregate.isSummary === 1) {
+      intervalSummary = aggregate;
+      continue;
+    }
+    if (aggregate.agentId === null) continue;
+    const row = ensure(aggregate.agentId);
+    row.assignmentEvents = asNumber(aggregate.assignmentEvents);
+    row.assignedInPeriod = asNumber(aggregate.assignedInPeriod);
+    row.firstResponsesInPeriod = asNumber(aggregate.responseCount);
+    row.responseCount = asNumber(aggregate.responseCount);
+    row.avgResponseSeconds = nullableNumber(aggregate.avgResponseSeconds);
+    row.medianResponseSeconds = nullableNumber(aggregate.medianResponseSeconds);
+    row.p90ResponseSeconds = nullableNumber(aggregate.p90ResponseSeconds);
+    row.maxResponseSeconds = nullableNumber(aggregate.maxResponseSeconds);
+    row.slaBreaches = asNumber(aggregate.slaBreaches);
+  }
+
+  const databaseTotal = [...rows.values()].reduce((sum, row) => sum + row.currentWorkload, 0);
+  const liveSupported = supportsLiveFilters(f);
+  const liveCounts = liveSupported
+    ? await fetchLiveCountsByEntity("agent", [...rows.keys()], f).catch(() => null)
+    : null;
+
+  if (liveCounts) {
+    for (const count of liveCounts.counts) {
+      const row = ensure(count.id);
+      row.currentOpen = count.open;
+      row.currentWaiting = Math.max(0, count.active - count.open);
+      row.currentWorkload = count.active;
+    }
+  }
+
+  const allRows = [...rows.values()];
+  for (const row of allRows) {
+    row.hasActivity =
+      row.currentWorkload > 0 ||
+      row.assignmentEvents > 0 ||
+      row.createdInPeriod > 0 ||
+      row.resolvedWhileAssigned > 0;
+  }
+
+  const summary: AgentSummary = {
+    totalAgents: allRows.length,
+    activeAgents: allRows.filter((row) => row.hasActivity).length,
+    currentWorkload: allRows.reduce((sum, row) => sum + row.currentWorkload, 0),
+    needsReplyNow: allRows.reduce((sum, row) => sum + row.needsReplyNow, 0),
+    assignedInPeriod: allRows.reduce((sum, row) => sum + row.assignedInPeriod, 0),
+    avgResponseSeconds: nullableNumber(intervalSummary?.avgResponseSeconds),
+    p90ResponseSeconds: nullableNumber(intervalSummary?.p90ResponseSeconds),
+    slaBreaches: allRows.reduce((sum, row) => sum + row.slaBreaches, 0),
+  };
+
+  const visible = f.activeOnly ? allRows.filter((row) => row.hasActivity) : allRows;
+  visible.sort((a, b) => {
+    if (a.hasActivity !== b.hasActivity) return a.hasActivity ? -1 : 1;
+    if (b.currentWorkload !== a.currentWorkload) return b.currentWorkload - a.currentWorkload;
+    if (b.assignedInPeriod !== a.assignedInPeriod) return b.assignedInPeriod - a.assignedInPeriod;
+    return a.name.localeCompare(b.name, "en");
   });
+
+  const chatwootTotal = liveCounts ? liveCounts.counts.reduce((sum, count) => sum + count.active, 0) : null;
+  return {
+    rows: visible,
+    summary,
+    live: {
+      source: liveCounts ? "chatwoot" : "database",
+      exact: Boolean(liveCounts),
+      snapshotAt: liveCounts?.snapshotAt ?? null,
+      databaseTotal,
+      chatwootTotal,
+      difference: chatwootTotal === null ? null : chatwootTotal - databaseTotal,
+      reason: liveCounts ? "live" : liveSupported ? "chatwoot_unavailable" : "unsupported_filters",
+    },
+  };
 }
 
-export async function getAgentDetail(agentId: number, f: ReportFilters) {
-  const [agent, board, conversations] = await Promise.all([
+interface IntervalAggregate {
+  agentId: number | null;
+  isSummary: number;
+  assignmentEvents: bigint | number | string;
+  assignedInPeriod: bigint | number | string;
+  responseCount: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  medianResponseSeconds: number | string | null;
+  p90ResponseSeconds: number | string | null;
+  maxResponseSeconds: number | string | null;
+  slaBreaches: bigint | number | string;
+}
+
+function asNumber(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: bigint | number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export async function getAgentDetail(agentId: number, f: ReportFilters, page = 1, pageSize = 50) {
+  const size = Math.min(Math.max(pageSize, 1), 200);
+  const currentPage = Math.max(page, 1);
+  const where = { ...conversationWhere(f, { ignoreDate: true }), assigneeCwId: agentId };
+  const [agent, board, total, rows] = await Promise.all([
     prisma.agent.findUnique({ where: { id: agentId } }),
     getAgentLeaderboard({ ...f, agentId: [agentId], activeOnly: false }),
+    prisma.conversation.count({ where }),
     prisma.conversation.findMany({
-      where: { ...conversationWhere(f, { ignoreDate: true }), assigneeCwId: agentId },
+      where,
       orderBy: { lastMessageAt: "desc" },
-      take: 500,
+      skip: (currentPage - 1) * size,
+      take: size,
       select: {
         chatwootId: true,
         contactName: true,
@@ -382,5 +557,10 @@ export async function getAgentDetail(agentId: number, f: ReportFilters) {
   ]);
 
   const summary = board.rows.find((a) => a.agentId === agentId) ?? null;
-  return { agent, summary, conversations };
+  return {
+    agent,
+    summary,
+    conversations: { rows, total, page: currentPage, pageSize: size, pages: Math.ceil(total / size) },
+    live: board.live,
+  };
 }

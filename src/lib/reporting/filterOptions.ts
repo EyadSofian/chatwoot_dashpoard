@@ -18,11 +18,10 @@ export async function getFilterOptions(): Promise<FilterOptions> {
     prisma.agent.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, department: true } }),
     prisma.inbox.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    prisma.conversation.findMany({
+    prisma.conversation.groupBy({
+      by: ["campaignLabel"],
       where: { campaignLabel: { not: null } },
-      distinct: ["campaignLabel"],
-      select: { campaignLabel: true },
-      take: 500,
+      orderBy: { campaignLabel: "asc" },
     }),
     prisma.label.findMany({ orderBy: { title: "asc" }, select: { title: true, color: true } }),
     getMetadataSyncState(),

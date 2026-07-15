@@ -15,7 +15,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ agentId: st
 
   const { agentId } = await ctx.params;
   const id = Number(agentId);
-  if (!Number.isFinite(id)) return badRequest("رقم موظف غير صحيح");
+  if (!Number.isFinite(id)) return badRequest("Invalid agent id");
 
   try {
     assertChatwootEnv();
@@ -32,6 +32,6 @@ export async function GET(request: Request, ctx: { params: Promise<{ agentId: st
   try {
     return NextResponse.json(await auditAgentDetail(id, filters, { maxPages }));
   } catch (error) {
-    return serverError("فشل تدقيق بيانات الموظف", (error as Error).message);
+    return serverError("Agent audit failed", (error as Error).message);
   }
 }

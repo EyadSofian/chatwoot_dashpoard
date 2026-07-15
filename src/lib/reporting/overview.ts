@@ -1,11 +1,10 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { average, median } from "@/lib/format";
+import { fetchLiveAccountCount } from "@/lib/chatwoot/liveCounts";
 import { conversationWhere, type ReportFilters } from "./filters";
 import { getCampaignPerformanceBySource } from "./campaigns";
-
-function dayKey(date: Date, tz: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
-}
+import { getAgentLeaderboard } from "./agents";
+import { andSql, conversationSqlConditions } from "./sqlFilters";
 
 export interface OverviewResult {
   kpis: {
@@ -35,107 +34,111 @@ export interface OverviewResult {
 
 export async function getOverview(f: ReportFilters, tz = "Africa/Cairo"): Promise<OverviewResult> {
   const where = conversationWhere(f);
+  const sqlWhere = andSql(conversationSqlConditions(f, { alias: "c" }));
+  const activeStatuses = ["open", "pending", "snoozed"].filter(
+    (status) => !f.status?.length || f.status.includes(status),
+  );
+  const currentWhere = conversationWhere(f, { ignoreDate: true });
 
-  const rows = await prisma.conversation.findMany({
-    where,
-    select: {
-      chatwootId: true,
-      createdAtCw: true,
-      status: true,
-      needsReply: true,
-      department: true,
-      responseSeconds: true,
-      conversationDurationSeconds: true,
-      slaFirstResponseBreached: true,
-      assigneeCwId: true,
-      assigneeName: true,
-      assignedAt: true,
-      firstHumanReplyAt: true,
-      contactName: true,
-    },
-    take: 30000,
-  });
+  const [summaryRows, dailyRows, departmentRows, lateRows, campaignPerformance, agentBoard, liveAccount, dbOpenNow, needsReply] =
+    await Promise.all([
+      prisma.$queryRaw<OverviewAggregate[]>(Prisma.sql`
+        SELECT
+          COUNT(*)::bigint AS "totalConversations",
+          AVG(c."responseSeconds")::double precision AS "avgResponseSeconds",
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY c."responseSeconds") FILTER (
+            WHERE c."responseSeconds" IS NOT NULL
+          )::double precision AS "medianResponseSeconds",
+          AVG(c."conversationDurationSeconds")::double precision AS "avgResolutionSeconds",
+          COUNT(*) FILTER (WHERE c."slaFirstResponseBreached" = TRUE)::bigint AS "slaBreaches"
+        FROM "conversations" c
+        ${sqlWhere}
+      `),
+      prisma.$queryRaw<DailyAggregate[]>(Prisma.sql`
+        SELECT
+          TO_CHAR(c."createdAtCw" AT TIME ZONE ${tz}, 'YYYY-MM-DD') AS "date",
+          COUNT(*)::bigint AS "count",
+          COUNT(*) FILTER (WHERE c."status" = 'resolved')::bigint AS "resolved"
+        FROM "conversations" c
+        ${sqlWhere}
+        GROUP BY 1
+        ORDER BY 1
+      `),
+      prisma.$queryRaw<DepartmentAggregate[]>(Prisma.sql`
+        SELECT
+          COALESCE(c."department", 'unknown') AS "department",
+          AVG(c."responseSeconds")::double precision AS "avgResponseSeconds",
+          COUNT(c."responseSeconds")::bigint AS "count"
+        FROM "conversations" c
+        ${sqlWhere}
+        GROUP BY COALESCE(c."department", 'unknown')
+        ORDER BY COALESCE(c."department", 'unknown')
+      `),
+      prisma.conversation.findMany({
+        where: { ...where, status: { not: "resolved" }, needsReply: true },
+        orderBy: [{ assignedAt: "asc" }, { createdAtCw: "asc" }],
+        take: 10,
+        select: {
+          chatwootId: true,
+          contactName: true,
+          assigneeName: true,
+          department: true,
+          assignedAt: true,
+          createdAtCw: true,
+          status: true,
+        },
+      }),
+      getCampaignPerformance(f),
+      getAgentLeaderboard({ ...f, activeOnly: true }),
+      fetchLiveAccountCount(f).catch(() => null),
+      prisma.conversation.count({ where: { ...currentWhere, status: "open" } }),
+      activeStatuses.length
+        ? prisma.conversation.count({
+            where: { ...currentWhere, status: { in: activeStatuses }, needsReply: true },
+          })
+        : Promise.resolve(0),
+    ]);
 
-  const now = Date.now();
-  const responseValues = rows.map((r) => r.responseSeconds).filter((v): v is number => v !== null);
-  const resolutionValues = rows.map((r) => r.conversationDurationSeconds).filter((v): v is number => v !== null);
-
-  // Daily trend
-  const dayMap = new Map<string, { count: number; resolved: number }>();
-  for (const r of rows) {
-    if (!r.createdAtCw) continue;
-    const key = dayKey(r.createdAtCw, tz);
-    const entry = dayMap.get(key) ?? { count: 0, resolved: 0 };
-    entry.count++;
-    if (r.status === "resolved") entry.resolved++;
-    dayMap.set(key, entry);
-  }
-  const dailyTrend = [...dayMap.entries()]
-    .map(([date, v]) => ({ date, count: v.count, resolved: v.resolved }))
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  // Response by department
-  const deptMap = new Map<string, number[]>();
-  for (const r of rows) {
-    const dep = r.department ?? "unknown";
-    if (r.responseSeconds !== null) {
-      const arr = deptMap.get(dep) ?? [];
-      arr.push(r.responseSeconds);
-      deptMap.set(dep, arr);
-    } else if (!deptMap.has(dep)) {
-      deptMap.set(dep, []);
-    }
-  }
-  const responseByDepartment = [...deptMap.entries()].map(([department, vals]) => ({
-    department,
-    avgResponseSeconds: average(vals),
-    count: vals.length,
+  const aggregate = summaryRows[0];
+  const dailyTrend = dailyRows.map((row) => ({
+    date: row.date,
+    count: asNumber(row.count),
+    resolved: asNumber(row.resolved),
   }));
-
-  // Agent load (open + needs reply)
-  const agentMap = new Map<number, { name: string; open: number; needsReply: number; resp: number[] }>();
-  for (const r of rows) {
-    if (r.assigneeCwId === null) continue;
-    const a = agentMap.get(r.assigneeCwId) ?? { name: r.assigneeName ?? `#${r.assigneeCwId}`, open: 0, needsReply: 0, resp: [] };
-    if (r.status === "open") a.open++;
-    if (r.needsReply) a.needsReply++;
-    if (r.responseSeconds !== null) a.resp.push(r.responseSeconds);
-    agentMap.set(r.assigneeCwId, a);
-  }
-  const agentLoad = [...agentMap.entries()]
-    .map(([agentId, v]) => ({ agentId, name: v.name, open: v.open, needsReply: v.needsReply, avgResponseSeconds: average(v.resp) }))
-    .sort((a, b) => b.open - a.open)
-    .slice(0, 10);
-
-  // Late conversations (open, needs reply, longest waiting since assignment/creation)
-  const lateConversations = rows
-    .filter((r) => r.status !== "resolved" && r.needsReply)
-    .map((r) => {
-      const base = r.assignedAt ?? r.createdAtCw;
-      return {
-        chatwootId: r.chatwootId,
-        contactName: r.contactName,
-        assigneeName: r.assigneeName,
-        department: r.department,
-        waitingSeconds: base ? Math.round((now - base.getTime()) / 1000) : null,
-        status: r.status,
-      };
-    })
-    .sort((a, b) => (b.waitingSeconds ?? 0) - (a.waitingSeconds ?? 0))
-    .slice(0, 10);
-
-  // Campaign performance
-  const campaignPerformance = await getCampaignPerformance(f);
+  const responseByDepartment = departmentRows.map((row) => ({
+    department: row.department,
+    avgResponseSeconds: nullableNumber(row.avgResponseSeconds),
+    count: asNumber(row.count),
+  }));
+  const agentLoad = agentBoard.rows.slice(0, 10).map((row) => ({
+    agentId: row.agentId,
+    name: row.name,
+    open: row.currentOpen,
+    needsReply: row.needsReplyNow,
+    avgResponseSeconds: row.avgResponseSeconds,
+  }));
+  const now = Date.now();
+  const lateConversations = lateRows.map((row) => {
+    const base = row.assignedAt ?? row.createdAtCw;
+    return {
+      chatwootId: row.chatwootId,
+      contactName: row.contactName,
+      assigneeName: row.assigneeName,
+      department: row.department,
+      waitingSeconds: base ? Math.max(0, Math.round((now - base.getTime()) / 1000)) : null,
+      status: row.status,
+    };
+  });
 
   return {
     kpis: {
-      totalConversations: rows.length,
-      openNow: rows.filter((r) => r.status === "open").length,
-      needsReply: rows.filter((r) => r.needsReply).length,
-      avgResponseSeconds: average(responseValues),
-      medianResponseSeconds: median(responseValues),
-      avgResolutionSeconds: average(resolutionValues),
-      slaBreaches: rows.filter((r) => r.slaFirstResponseBreached).length,
+      totalConversations: asNumber(aggregate?.totalConversations),
+      openNow: liveAccount?.open ?? dbOpenNow,
+      needsReply,
+      avgResponseSeconds: nullableNumber(aggregate?.avgResponseSeconds),
+      medianResponseSeconds: nullableNumber(aggregate?.medianResponseSeconds),
+      avgResolutionSeconds: nullableNumber(aggregate?.avgResolutionSeconds),
+      slaBreaches: asNumber(aggregate?.slaBreaches),
       campaignsSent: campaignPerformance.reduce((s, c) => s + c.sent, 0),
       campaignReplies: campaignPerformance.reduce((s, c) => s + c.replies, 0),
     },
@@ -145,6 +148,38 @@ export async function getOverview(f: ReportFilters, tz = "Africa/Cairo"): Promis
     lateConversations,
     campaignPerformance,
   };
+}
+
+interface OverviewAggregate {
+  totalConversations: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  medianResponseSeconds: number | string | null;
+  avgResolutionSeconds: number | string | null;
+  slaBreaches: bigint | number | string;
+}
+
+interface DailyAggregate {
+  date: string;
+  count: bigint | number | string;
+  resolved: bigint | number | string;
+}
+
+interface DepartmentAggregate {
+  department: string;
+  avgResponseSeconds: number | string | null;
+  count: bigint | number | string;
+}
+
+function asNumber(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: bigint | number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 async function getCampaignPerformance(f: ReportFilters): Promise<OverviewResult["campaignPerformance"]> {

@@ -87,7 +87,6 @@ export async function reconcileCampaignReplies(opts: ReconcileOptions = {}): Pro
     const recipients = await prisma.campaignRecipient.findMany({
       where: { campaignJobId: job.id, status: "sent" },
       select: { id: true, conversationCwId: true, messageCwId: true, phone: true },
-      take: 20000,
     });
 
     for (const r of recipients) {
@@ -207,7 +206,6 @@ async function loadMessages(conversationCwId: number) {
   const rows = await prisma.message.findMany({
     where: { conversationCwId },
     orderBy: { createdAtCw: "asc" },
-    take: 2000,
     select: {
       chatwootId: true,
       createdAtCw: true,

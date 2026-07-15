@@ -30,6 +30,6 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await auditAgents(filters, { maxPages }));
   } catch (error) {
-    return serverError("فشل تدقيق البيانات", (error as Error).message);
+    return serverError("Audit failed", (error as Error).message);
   }
 }

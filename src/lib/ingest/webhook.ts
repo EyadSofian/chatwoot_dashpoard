@@ -12,10 +12,18 @@ interface WebhookBody {
   id?: number;
   status?: string;
   conversation_id?: number;
-  conversation?: { id?: number; status?: string; meta?: { assignee?: { id?: number } | null } };
+  conversation?: {
+    id?: number;
+    status?: string;
+    meta?: { assignee?: { id?: number } | null; team?: { id?: number } | null };
+  };
   message_type?: number | string;
   created_at?: number | string;
+  updated_at?: number | string;
   assignee?: { id?: number } | null;
+  team?: { id?: number } | null;
+  meta?: { assignee?: { id?: number } | null; team?: { id?: number } | null };
+  changed_attributes?: unknown;
   [key: string]: unknown;
 }
 
@@ -50,7 +58,12 @@ export async function processWebhook(
   const event = typeof body.event === "string" ? body.event : null;
   const conversationCwId = extractConversationId(body);
   const messageCwId = event?.startsWith("message") && typeof body.id === "number" ? body.id : null;
-  const occurredAt = toDate(body.created_at);
+  // A conversation webhook's `created_at` is the conversation creation time,
+  // not the time of this update. Using it for assignment events moved every
+  // reassignment back to day one and corrupted response-time reports.
+  const occurredAt = event?.startsWith("conversation")
+    ? toDate(body.updated_at) ?? new Date()
+    : toDate(body.created_at) ?? new Date();
   const dedupeKey = webhookDedupeKey(event, rawBody);
 
   // Idempotent raw store: a duplicate delivery collides on dedupeKey.
@@ -118,21 +131,53 @@ async function recordLifecycleEvents(
   if (!conversationCwId) return;
   const at = occurredAt ?? new Date();
   const event = body.event;
-  const events: { type: string; toValue: string | null }[] = [];
+  const events: { type: string; fromValue: string | null; toValue: string | null }[] = [];
 
-  if (event === "assignee_changed" || event === "conversation_updated" || event === "conversation_created") {
-    const assigneeId =
-      (typeof body.assignee?.id === "number" ? body.assignee.id : null) ??
-      (typeof body.conversation?.meta?.assignee?.id === "number" ? body.conversation.meta.assignee.id : null);
-    if (event === "assignee_changed") {
-      events.push({ type: assigneeId ? "assigned" : "unassigned", toValue: assigneeId ? String(assigneeId) : null });
-    } else if (assigneeId) {
-      events.push({ type: "assigned", toValue: String(assigneeId) });
+  if (event === "conversation_created") {
+    events.push({ type: "created", fromValue: null, toValue: null });
+    const assigneeId = extractAssigneeId(body);
+    if (assigneeId !== null) {
+      events.push({ type: "assigned", fromValue: null, toValue: String(assigneeId) });
     }
+    const teamId = extractTeamId(body);
+    if (teamId !== null) events.push({ type: "team_changed", fromValue: null, toValue: String(teamId) });
   }
 
-  if (event === "conversation_status_changed" || event === "conversation_resolved" || event === "conversation_reopened") {
-    const status = String(body.status ?? body.conversation?.status ?? "").toLowerCase();
+  const assigneeChange = changedAttribute(body.changed_attributes, "assignee_id");
+  if (event === "assignee_changed" || (event === "conversation_updated" && assigneeChange.changed)) {
+    const fromId = idValue(assigneeChange.from);
+    const changedToId = idValue(assigneeChange.to);
+    const toId = assigneeChange.hasToValue ? changedToId : extractAssigneeId(body);
+    events.push({
+      type: toId === null ? "unassigned" : "assigned",
+      fromValue: fromId === null ? null : String(fromId),
+      toValue: toId === null ? null : String(toId),
+    });
+  }
+
+  const teamChange = changedAttribute(body.changed_attributes, "team_id");
+  if (event === "conversation_updated" && teamChange.changed) {
+    const fromId = idValue(teamChange.from);
+    const changedToId = idValue(teamChange.to);
+    const toId = teamChange.hasToValue ? changedToId : extractTeamId(body);
+    events.push({
+      type: "team_changed",
+      fromValue: fromId === null ? null : String(fromId),
+      toValue: toId === null ? null : String(toId),
+    });
+  }
+
+  const statusChange = changedAttribute(body.changed_attributes, "status");
+  if (
+    event === "conversation_status_changed" ||
+    event === "conversation_resolved" ||
+    event === "conversation_reopened" ||
+    (event === "conversation_updated" && statusChange.changed)
+  ) {
+    const status = String(
+      statusChange.hasToValue ? statusChange.to ?? "" : body.status ?? body.conversation?.status ?? "",
+    ).toLowerCase();
+    const previousStatus = statusChange.changed ? String(statusChange.from ?? "").toLowerCase() : "";
     const type =
       event === "conversation_resolved" || status === "resolved"
         ? "resolved"
@@ -141,19 +186,86 @@ async function recordLifecycleEvents(
           : status === "open"
             ? "open"
             : status || "status_changed";
-    events.push({ type, toValue: status || null });
+    events.push({ type, fromValue: previousStatus || null, toValue: status || null });
   }
 
   for (const e of events) {
-    const dedupeKey = `${conversationCwId}:${e.type}:${e.toValue ?? ""}:${at.toISOString()}`;
+    const dedupeKey = `${conversationCwId}:${e.type}:${e.fromValue ?? ""}:${e.toValue ?? ""}:${at.toISOString()}`;
     await prisma.conversationEvent
       .create({
-        data: { conversationCwId, type: e.type, toValue: e.toValue, occurredAt: at, dedupeKey },
+        data: {
+          conversationCwId,
+          type: e.type,
+          fromValue: e.fromValue,
+          toValue: e.toValue,
+          occurredAt: at,
+          dedupeKey,
+        },
       })
       .catch((error) => {
         if (!isUniqueViolation(error)) throw error;
       });
   }
+}
+
+interface ChangedValue {
+  changed: boolean;
+  from: unknown;
+  to: unknown;
+  hasToValue: boolean;
+}
+
+/** Supports both Rails `[old, new]` and `{ previous_value, current_value }` payloads. */
+function changedAttribute(input: unknown, key: string): ChangedValue {
+  let raw: unknown;
+  if (Array.isArray(input)) {
+    for (const entry of input) {
+      if (typeof entry === "string" && entry === key) return { changed: true, from: undefined, to: undefined, hasToValue: false };
+      if (entry && typeof entry === "object" && key in entry) {
+        raw = (entry as Record<string, unknown>)[key];
+        break;
+      }
+    }
+  } else if (input && typeof input === "object" && key in input) {
+    raw = (input as Record<string, unknown>)[key];
+  }
+  if (raw === undefined) return { changed: false, from: undefined, to: undefined, hasToValue: false };
+  if (Array.isArray(raw)) {
+    return { changed: true, from: raw[0], to: raw[1], hasToValue: raw.length > 1 };
+  }
+  if (raw && typeof raw === "object") {
+    const value = raw as Record<string, unknown>;
+    const hasCurrent = "current_value" in value || "to" in value || "new" in value;
+    return {
+      changed: true,
+      from: value.previous_value ?? value.from ?? value.old,
+      to: value.current_value ?? value.to ?? value.new,
+      hasToValue: hasCurrent,
+    };
+  }
+  return { changed: true, from: undefined, to: raw, hasToValue: true };
+}
+
+function idValue(value: unknown): number | null {
+  if (value && typeof value === "object" && "id" in value) return idValue((value as { id?: unknown }).id);
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function extractAssigneeId(body: WebhookBody): number | null {
+  return firstId(body.meta?.assignee, body.assignee, body.conversation?.meta?.assignee);
+}
+
+function extractTeamId(body: WebhookBody): number | null {
+  return firstId(body.meta?.team, body.team, body.conversation?.meta?.team);
+}
+
+function firstId(...values: Array<{ id?: number } | null | undefined>): number | null {
+  for (const value of values) {
+    if (typeof value?.id === "number" && value.id > 0) return value.id;
+  }
+  return null;
 }
 
 function isUniqueViolation(error: unknown): boolean {

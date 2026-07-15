@@ -6,12 +6,11 @@ import type { FahdResult } from "@/lib/reporting/fahd";
 import { Kpi, Card, CardTitle, Section, LoadingBlock, ErrorState, DepartmentPill, StatusPill } from "@/components/ui";
 import { DataTable, type Column } from "@/components/DataTable";
 import { ExportButton } from "@/components/ExportButton";
-import { formatDurationShort, formatNumber } from "@/lib/format";
-import { useLocale } from "@/lib/i18n";
-import { DEPARTMENT_LABELS_AR, type Department } from "@/lib/constants";
+import { formatDurationShort, formatNumber, formatDateTime } from "@/lib/format";
+import { useLocale, departmentLabel } from "@/lib/i18n";
 
 export default function FahdPage() {
-  const { tr } = useLocale();
+  const { tr, locale } = useLocale();
   const { data, loading, error } = useApiData<FahdResult>("/api/fahd");
 
   if (loading) return <LoadingBlock />;
@@ -21,7 +20,7 @@ export default function FahdPage() {
   const noReplyCols: Column<FahdResult["noReplyList"][number]>[] = [
     { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "department", header: tr("القسم المُوجَّه", "Routed department"), render: (r) => <DepartmentPill department={r.department} /> },
-    { key: "handoffAt", header: tr("وقت التحويل", "Handoff time"), render: (r) => <span className="text-xs text-muted-foreground">{new Date(r.handoffAt).toLocaleString("ar-EG")}</span> },
+    { key: "handoffAt", header: tr("وقت التحويل", "Handoff time"), render: (r) => <span className="text-xs text-muted-foreground">{formatDateTime(r.handoffAt)}</span> },
     { key: "status", header: tr("الحالة", "Status"), render: (r) => <StatusPill status={r.status} /> },
   ];
 
@@ -37,15 +36,15 @@ export default function FahdPage() {
       </div>
 
       <Card>
-        <CardTitle>التوجيه حسب القسم</CardTitle>
+        <CardTitle>{tr("التوجيه حسب القسم", "Routing by department")}</CardTitle>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {data.routedByDepartment.map((d) => (
             <div key={d.department} className="rounded-lg border border-border p-3 text-center">
               <div className="text-2xl font-bold tnum">{formatNumber(d.count)}</div>
-              <div className="mt-1 text-xs text-muted-foreground">{DEPARTMENT_LABELS_AR[d.department as Department] ?? d.department}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{departmentLabel(d.department, locale)}</div>
             </div>
           ))}
-          {!data.routedByDepartment.length && <div className="col-span-full py-6 text-center text-sm text-muted-foreground">لا توجد تحويلات من فهد في هذه الفترة.</div>}
+          {!data.routedByDepartment.length && <div className="col-span-full py-6 text-center text-sm text-muted-foreground">{tr("لا توجد تحويلات من فهد في هذه الفترة.", "No Fahd handoffs in this period.")}</div>}
         </div>
       </Card>
 

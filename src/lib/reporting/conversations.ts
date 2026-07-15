@@ -91,7 +91,7 @@ export async function getConversationDetail(chatwootId: number) {
   if (!conversation) return null;
 
   const [messages, events, assignmentIntervals, resolutionIntervals, campaignReplies, botHandoffs] = await Promise.all([
-    prisma.message.findMany({ where: { conversationCwId: chatwootId }, orderBy: { createdAtCw: "asc" }, take: 1000 }),
+    prisma.message.findMany({ where: { conversationCwId: chatwootId }, orderBy: { createdAtCw: "asc" } }),
     prisma.conversationEvent.findMany({ where: { conversationCwId: chatwootId }, orderBy: { occurredAt: "asc" } }),
     prisma.assignmentInterval.findMany({ where: { conversationCwId: chatwootId }, orderBy: { startedAt: "asc" } }),
     prisma.resolutionInterval.findMany({ where: { conversationCwId: chatwootId }, orderBy: { segmentIndex: "asc" } }),

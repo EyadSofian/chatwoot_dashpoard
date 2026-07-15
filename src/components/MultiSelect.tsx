@@ -150,7 +150,7 @@ export function MultiSelect({
               );
             })}
             {!shown.length && (
-              <li className="px-2.5 py-3 text-center text-xs text-muted-foreground">لا توجد نتائج</li>
+              <li className="px-2.5 py-3 text-center text-xs text-muted-foreground">{tr("لا توجد نتائج", "No results")}</li>
             )}
           </ul>
 
@@ -160,7 +160,7 @@ export function MultiSelect({
               onClick={() => onChange([])}
               className="flex w-full cursor-pointer items-center justify-center gap-1 border-t border-border py-2 text-2xs font-semibold text-muted-foreground transition-colors hover:text-destructive-fg"
             >
-              <X className="h-3 w-3" /> إلغاء التحديد
+              <X className="h-3 w-3" /> {tr("إلغاء التحديد", "Clear selection")}
             </button>
           )}
         </div>

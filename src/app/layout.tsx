@@ -11,9 +11,8 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "تحليلات إنجوسوفت | Engosoft Chatwoot Analytics",
-  description:
-    "لوحة تحليلات تشغيلية لخدمة عملاء إنجوسوفت — تقارير الموظفين والأقسام والكامبينات ومستوى الخدمة.",
+  title: "Engosoft Chatwoot Analytics",
+  description: "Operational analytics for Engosoft customer service, agents, teams, campaigns, and SLA.",
   robots: { index: false, follow: false },
   icons: { icon: "/favicon.svg" },
 };
@@ -25,11 +24,11 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Default to Arabic/RTL on the server; LocaleProvider flips <html dir/lang> on
-  // the client if the visitor previously chose English. suppressHydrationWarning
+  // Default to English/LTR on the server; LocaleProvider flips <html dir/lang> on
+  // the client if the visitor previously chose Arabic. suppressHydrationWarning
   // keeps React from complaining about that intentional attribute swap.
   return (
-    <html lang="ar" dir="rtl" className={cairo.variable} suppressHydrationWarning>
+    <html lang="en" dir="ltr" className={cairo.variable} suppressHydrationWarning>
       <body className="min-h-dvh bg-background font-sans text-foreground antialiased">
         <LocaleProvider>{children}</LocaleProvider>
       </body>

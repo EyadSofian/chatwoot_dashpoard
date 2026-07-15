@@ -206,6 +206,12 @@ model Conversation {
   @@index([firstHumanReplyAt])
   @@index([resolvedAt])
   @@index([slaFirstResponseBreached])
+  @@index([assigneeCwId, status])
+  @@index([teamCwId, status])
+  @@index([status, needsReply])
+  @@index([createdAtCw, assigneeCwId])
+  @@index([resolvedAt, assigneeCwId])
+  @@index([labels], type: Gin)
   // The team report's hot path: one team, one window.
   @@index([teamCwId, createdAtCw])
   @@map("conversations")
@@ -281,6 +287,7 @@ model AssignmentInterval {
   @@unique([conversationCwId, assigneeCwId, startedAt])
   @@index([assigneeCwId, startedAt])
   @@index([teamCwId, startedAt])
+  @@index([startedAt, assigneeCwId])
   @@map("assignment_intervals")
 }
 
@@ -477,6 +484,7 @@ model BotHandoff {
 
   @@index([department])
   @@index([handoffAt])
+  @@index([handoffAt, department])
   @@map("bot_handoffs")
 }
 

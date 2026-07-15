@@ -2,8 +2,8 @@ import { prisma } from "@/lib/db";
 import { conversationWhere, type ReportFilters } from "./filters";
 
 export interface SlaResult {
-  firstResponse: { breached: number; nearBreach: number; healthy: number };
-  resolution: { breached: number; nearBreach: number; healthy: number };
+  firstResponse: { breached: number; nearBreach: number; healthy: number; unknown: number };
+  resolution: { breached: number; nearBreach: number; healthy: number; unknown: number };
   breachedList: {
     chatwootId: number;
     contactName: string | null;
@@ -23,62 +23,80 @@ export interface SlaResult {
 
 export async function getSla(f: ReportFilters): Promise<SlaResult> {
   const where = conversationWhere(f);
-  const rows = await prisma.conversation.findMany({
-    where,
-    select: {
-      chatwootId: true,
-      contactName: true,
-      assigneeName: true,
-      department: true,
-      status: true,
-      responseSeconds: true,
-      assignedAt: true,
-      createdAtCw: true,
-      slaFirstResponseState: true,
-      slaResolutionState: true,
-    },
-    take: 40000,
-  });
+  const activeStatuses = ["open", "pending", "snoozed"].filter(
+    (status) => !f.status?.length || f.status.includes(status),
+  );
+  const [firstGroups, resolutionGroups, breachedList, nearRows] = await Promise.all([
+    prisma.conversation.groupBy({
+      by: ["slaFirstResponseState"],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.conversation.groupBy({
+      by: ["slaResolutionState"],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.conversation.findMany({
+      where: { ...where, slaFirstResponseState: "breached" },
+      orderBy: [{ responseSeconds: "desc" }, { chatwootId: "desc" }],
+      take: 25,
+      select: {
+        chatwootId: true,
+        contactName: true,
+        assigneeName: true,
+        department: true,
+        responseSeconds: true,
+        status: true,
+      },
+    }),
+    activeStatuses.length
+      ? prisma.conversation.findMany({
+          where: {
+            ...where,
+            slaFirstResponseState: "near_breach",
+            status: { in: activeStatuses },
+          },
+          orderBy: [{ assignedAt: "asc" }, { createdAtCw: "asc" }],
+          take: 25,
+          select: {
+            chatwootId: true,
+            contactName: true,
+            assigneeName: true,
+            department: true,
+            assignedAt: true,
+            createdAtCw: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
 
-  const fr = { breached: 0, nearBreach: 0, healthy: 0 };
-  const res = { breached: 0, nearBreach: 0, healthy: 0 };
-  for (const r of rows) {
-    if (r.slaFirstResponseState === "breached") fr.breached++;
-    else if (r.slaFirstResponseState === "near_breach") fr.nearBreach++;
-    else fr.healthy++;
-    if (r.slaResolutionState === "breached") res.breached++;
-    else if (r.slaResolutionState === "near_breach") res.nearBreach++;
-    else res.healthy++;
+  const fr = { breached: 0, nearBreach: 0, healthy: 0, unknown: 0 };
+  for (const group of firstGroups) {
+    if (group.slaFirstResponseState === "breached") fr.breached = group._count._all;
+    else if (group.slaFirstResponseState === "near_breach") fr.nearBreach = group._count._all;
+    else if (group.slaFirstResponseState === "healthy") fr.healthy = group._count._all;
+    else fr.unknown += group._count._all;
+  }
+  const res = { breached: 0, nearBreach: 0, healthy: 0, unknown: 0 };
+  for (const group of resolutionGroups) {
+    if (group.slaResolutionState === "breached") res.breached = group._count._all;
+    else if (group.slaResolutionState === "near_breach") res.nearBreach = group._count._all;
+    else if (group.slaResolutionState === "healthy") res.healthy = group._count._all;
+    else res.unknown += group._count._all;
   }
 
   const now = Date.now();
-  const breachedList = rows
-    .filter((r) => r.slaFirstResponseState === "breached")
-    .map((r) => ({
-      chatwootId: r.chatwootId,
-      contactName: r.contactName,
-      assigneeName: r.assigneeName,
-      department: r.department,
-      responseSeconds: r.responseSeconds,
-      status: r.status,
-    }))
-    .sort((a, b) => (b.responseSeconds ?? 0) - (a.responseSeconds ?? 0))
-    .slice(0, 25);
-
-  const nearBreachList = rows
-    .filter((r) => r.slaFirstResponseState === "near_breach" && r.status !== "resolved")
-    .map((r) => {
-      const base = r.assignedAt ?? r.createdAtCw;
-      return {
-        chatwootId: r.chatwootId,
-        contactName: r.contactName,
-        assigneeName: r.assigneeName,
-        department: r.department,
-        waitingSeconds: base ? Math.round((now - base.getTime()) / 1000) : null,
-      };
-    })
-    .sort((a, b) => (b.waitingSeconds ?? 0) - (a.waitingSeconds ?? 0))
-    .slice(0, 25);
+  const nearBreachList = nearRows.map((row) => {
+    const base = row.assignedAt ?? row.createdAtCw;
+    return {
+      chatwootId: row.chatwootId,
+      contactName: row.contactName,
+      assigneeName: row.assigneeName,
+      department: row.department,
+      waitingSeconds: base ? Math.max(0, Math.round((now - base.getTime()) / 1000)) : null,
+    };
+  });
 
   return { firstResponse: fr, resolution: res, breachedList, nearBreachList };
 }

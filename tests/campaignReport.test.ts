@@ -17,9 +17,15 @@ const db = vi.hoisted(() => ({
   jobs: [] as Record<string, unknown>[],
   replies: [] as Record<string, unknown>[],
   recipientGroups: [] as Record<string, unknown>[],
-  replyWhere: undefined as unknown,
+  replySql: undefined as { text: string; values: unknown[] } | undefined,
   countWhere: undefined as unknown,
 }));
+
+/** Pull the parameterised text + bound values off a Prisma.Sql instance. */
+function sqlParts(query: unknown): { text: string; values: unknown[] } {
+  const q = query as { text?: string; sql?: string; strings?: string[]; values?: unknown[] };
+  return { text: q.text ?? q.sql ?? (q.strings ?? []).join(" ? "), values: q.values ?? [] };
+}
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -27,11 +33,42 @@ vi.mock("@/lib/db", () => ({
       findMany: async () => db.jobs,
       count: async () => db.jobs.length,
     },
+    // Reply metrics are aggregated in PostgreSQL now. The fake runs the same
+    // aggregation over the in-memory rows — distinct repliers, NULL-skipping
+    // average, cohort bound on replyAt — so the tests keep asserting SEMANTICS,
+    // not call shapes.
+    $queryRaw: async (query: unknown) => {
+      const parts = sqlParts(query);
+      db.replySql = parts;
+      const to = parts.values.find((v): v is Date => v instanceof Date) ?? null;
+      const ids = new Set(parts.values.filter((v): v is bigint => typeof v === "bigint").map(String));
+
+      const perJob = new Map<string, Record<string, unknown>[]>();
+      for (const r of db.replies) {
+        const jobKey = String(r.campaignJobId);
+        if (ids.size && !ids.has(jobKey)) continue;
+        const replyAt = r.replyAt as Date | undefined;
+        if (to && replyAt && replyAt.getTime() > to.getTime()) continue;
+        const list = perJob.get(jobKey) ?? [];
+        list.push(r);
+        perJob.set(jobKey, list);
+      }
+
+      return [...perJob.entries()].map(([jobKey, list]) => {
+        const seconds = list
+          .map((r) => r.responseSeconds)
+          .filter((s): s is number => typeof s === "number");
+        return {
+          campaignJobId: BigInt(jobKey),
+          customerReplies: BigInt(new Set(list.map((r) => r.conversationCwId)).size),
+          teamReplied: BigInt(list.filter((r) => r.firstAgentReplyAt != null).length),
+          avgTeamResponseSeconds: seconds.length ? seconds.reduce((a, b) => a + b, 0) / seconds.length : null,
+          unassigned: BigInt(list.filter((r) => r.assigned === false).length),
+          agents: [...new Set(list.map((r) => r.assigneeName).filter((n): n is string => typeof n === "string"))],
+        };
+      });
+    },
     campaignReply: {
-      findMany: async ({ where }: { where: unknown }) => {
-        db.replyWhere = where;
-        return db.replies;
-      },
       count: async ({ where }: { where: unknown }) => {
         db.countWhere = where;
         return 7;
@@ -78,6 +115,8 @@ describe("campaign report", () => {
     db.jobs = [];
     db.replies = [];
     db.recipientGroups = [];
+    db.replySql = undefined;
+    db.countWhere = undefined;
   });
 
   it("keeps sales and operations separate, with replies, and no team marker anywhere", async () => {
@@ -175,9 +214,18 @@ describe("campaign report", () => {
 
     // Cohort: no lower bound on replyAt. A campaign sent on the 30th whose
     // replies land on the 31st is not a campaign with a 0% reply rate.
-    const where = db.replyWhere as { replyAt?: { gte?: Date; lte?: Date } };
-    expect(where.replyAt?.gte).toBeUndefined();
-    expect(where.replyAt?.lte).toEqual(FILTERS.to);
+    const text = db.replySql!.text;
+    expect(text).toContain('r."replyAt" <=');
+    expect(text).not.toContain('r."replyAt" >=');
+    expect(db.replySql!.values).toContainEqual(FILTERS.to);
+
+    // And the cohort bound actually filters: a reply after the window is out.
+    db.replies = [
+      { campaignJobId: 1n, conversationCwId: 1, assigned: true, assigneeName: null, responseSeconds: null, firstAgentReplyAt: null, replyAt: new Date("2026-07-20") },
+      { campaignJobId: 1n, conversationCwId: 2, assigned: true, assigneeName: null, responseSeconds: null, firstAgentReplyAt: null, replyAt: new Date("2026-08-05") },
+    ];
+    const { rows } = await getCampaigns(FILTERS);
+    expect(rows[0]!.customerReplies).toBe(1);
   });
 
   it("keeps 'replies that landed this period' as a separate volume KPI", async () => {

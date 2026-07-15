@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
   if (!getCampaignSources().length) {
     return NextResponse.json(
-      { ok: false, error: "لم يتم ضبط روابط تطبيقات الكامبين (CAMPAIGN_SALES_APP_URL / CAMPAIGN_OPERATIONS_APP_URL)" },
+      { ok: false, error: "Campaign app URLs are not configured (CAMPAIGN_SALES_APP_URL / CAMPAIGN_OPERATIONS_APP_URL)" },
       { status: 400 },
     );
   }
@@ -55,6 +55,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, stats: importStats, reconciliation });
   } catch (error) {
-    return serverError("فشل استيراد الكامبينات", (error as Error).message);
+    return serverError("Campaign import failed", (error as Error).message);
   }
 }

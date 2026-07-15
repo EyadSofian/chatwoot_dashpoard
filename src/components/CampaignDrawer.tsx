@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useState } from "react";
 import { useApiData } from "@/lib/client/api";
 import { Spinner, Badge, cn } from "@/components/ui";
 import { formatDurationShort, formatNumber, formatDateTime, formatPercent } from "@/lib/format";
@@ -24,13 +25,28 @@ interface CampaignDetail {
     deliveryFailuresCount: number;
     sentTrackCount: number;
   };
-  recipients: Array<{ id: string; phone: string | null; name: string | null; status: string | null; conversationCwId: number | null; errorDescription: string | null }>;
-  replies: Array<{ conversationCwId: number; assigned: boolean; assigneeName: string | null; responseSeconds: number | null }>;
+  recipients: {
+    rows: Array<{ id: string; phone: string | null; name: string | null; status: string | null; conversationCwId: number | null; errorDescription: string | null }>;
+    total: number;
+    page: number;
+    pages: number;
+  };
+  replies: {
+    rows: Array<{ conversationCwId: number; assigned: boolean; assigneeName: string | null; responseSeconds: number | null }>;
+    total: number;
+    page: number;
+    pages: number;
+  };
 }
 
 export function CampaignDrawer({ source, jobId, onClose }: { source: string; jobId: string; onClose: () => void }) {
   const { tr } = useLocale();
-  const { data, loading, error } = useApiData<CampaignDetail>(`/api/campaigns/${source}/${jobId}`);
+  const [recipientPage, setRecipientPage] = useState(1);
+  const [replyPage, setReplyPage] = useState(1);
+  const { data, loading, error } = useApiData<CampaignDetail>(`/api/campaigns/${source}/${jobId}`, {
+    recipientPage,
+    replyPage,
+  });
   const j = data?.job;
 
   return (
@@ -64,10 +80,10 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
                 <Stat label={tr("فشل", "Failed")} value={formatNumber(j.failed)} tone="text-destructive-fg" />
                 <Stat label={tr("متخطى", "Skipped")} value={formatNumber(j.skipped)} />
                 <Stat label={tr("فشل تسليم", "Delivery failures")} value={formatNumber(j.deliveryFailuresCount)} tone="text-warning-fg" />
-                <Stat label={tr("ردود", "Replies")} value={formatNumber(data?.replies.length ?? 0)} tone="text-primary" />
+                <Stat label={tr("ردود", "Replies")} value={formatNumber(data?.replies.total ?? 0)} tone="text-primary" />
               </div>
 
-              <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{tr("المستلمون", "Recipients")} ({formatNumber(data?.recipients.length ?? 0)})</div>
+              <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{tr("المستلمون", "Recipients")} ({formatNumber(data?.recipients.total ?? 0)})</div>
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-xs">
                   <thead>
@@ -79,7 +95,7 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
                     </tr>
                   </thead>
                   <tbody>
-                    {(data?.recipients ?? []).slice(0, 300).map((r) => (
+                    {(data?.recipients.rows ?? []).map((r) => (
                       <tr key={r.id} className="border-b border-border/50 last:border-0">
                         <td className="px-2 py-1.5">{r.name || "—"}</td>
                         <td className="px-2 py-1.5 tnum ltr-nums">{r.phone || "—"}</td>
@@ -94,12 +110,21 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
                   </tbody>
                 </table>
               </div>
+              {data && data.recipients.pages > 1 && (
+                <Pagination
+                  page={data.recipients.page}
+                  pages={data.recipients.pages}
+                  total={data.recipients.total}
+                  onPrevious={() => setRecipientPage((value) => Math.max(1, value - 1))}
+                  onNext={() => setRecipientPage((value) => Math.min(data.recipients.pages, value + 1))}
+                />
+              )}
 
-              {(data?.replies.length ?? 0) > 0 && (
+              {(data?.replies.total ?? 0) > 0 && (
                 <>
-                  <div className="mb-2 mt-4 text-xs font-semibold uppercase text-muted-foreground">{tr("الردود", "Replies")} ({formatNumber(data!.replies.length)})</div>
+                  <div className="mb-2 mt-4 text-xs font-semibold uppercase text-muted-foreground">{tr("الردود", "Replies")} ({formatNumber(data!.replies.total)})</div>
                   <div className="space-y-1">
-                    {data!.replies.slice(0, 100).map((rep, i) => (
+                    {data!.replies.rows.map((rep, i) => (
                       <div key={i} className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-xs">
                         <Link href={`/conversations?conv=${rep.conversationCwId}`} className="text-primary hover:underline">#{rep.conversationCwId}</Link>
                         <span className="text-muted-foreground">{rep.assigneeName || (rep.assigned ? tr("مُسند", "Assigned") : tr("غير مُسند", "Unassigned"))}</span>
@@ -107,17 +132,54 @@ export function CampaignDrawer({ source, jobId, onClose }: { source: string; job
                       </div>
                     ))}
                   </div>
+                  {data && data.replies.pages > 1 && (
+                    <Pagination
+                      page={data.replies.page}
+                      pages={data.replies.pages}
+                      total={data.replies.total}
+                      onPrevious={() => setReplyPage((value) => Math.max(1, value - 1))}
+                      onNext={() => setReplyPage((value) => Math.min(data.replies.pages, value + 1))}
+                    />
+                  )}
                 </>
               )}
 
               <div className="mt-4 text-2xs text-muted-foreground">
-                {tr("نسبة الرد", "Reply rate")}: {formatPercent(j.sent ? (data?.replies.length ?? 0) / j.sent : 0, 1)}
+                {tr("نسبة الرد", "Reply rate")}: {formatPercent(j.sent ? (data?.replies.total ?? 0) / j.sent : 0, 1)}
               </div>
             </>
           )}
         </div>
       </aside>
     </>
+  );
+}
+
+function Pagination({
+  page,
+  pages,
+  total,
+  onPrevious,
+  onNext,
+}: {
+  page: number;
+  pages: number;
+  total: number;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="mt-2 flex min-h-11 items-center justify-between gap-2 text-xs">
+      <button className="btn-ghost h-9 w-9 p-0" disabled={page <= 1} onClick={onPrevious} aria-label="Previous page">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <span className="tnum text-muted-foreground">
+        Page {formatNumber(page)} of {formatNumber(pages)} · {formatNumber(total)}
+      </span>
+      <button className="btn-ghost h-9 w-9 p-0" disabled={page >= pages} onClick={onNext} aria-label="Next page">
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 

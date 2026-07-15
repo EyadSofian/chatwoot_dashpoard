@@ -35,6 +35,6 @@ export async function POST(request: Request) {
     const stats = await reconcileCurrentWorkload(body);
     return NextResponse.json({ ok: true, stats });
   } catch (error) {
-    return serverError("فشلت إعادة مطابقة الحمل الحالي", (error as Error).message);
+    return serverError("Current-workload reconciliation failed", (error as Error).message);
   }
 }

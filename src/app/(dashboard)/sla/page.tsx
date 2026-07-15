@@ -20,9 +20,9 @@ export default function SlaPage() {
   if (!data) return null;
 
   const donut = [
-    { name: "خرق", value: data.firstResponse.breached, color: CHART.rose },
-    { name: "قريبة", value: data.firstResponse.nearBreach, color: CHART.amber },
-    { name: "سليمة", value: data.firstResponse.healthy, color: CHART.emerald },
+    { name: tr("خرق", "Breached"), value: data.firstResponse.breached, color: CHART.rose },
+    { name: tr("قريبة", "Near breach"), value: data.firstResponse.nearBreach, color: CHART.amber },
+    { name: tr("سليمة", "Healthy"), value: data.firstResponse.healthy, color: CHART.emerald },
   ];
 
   const breachCols: Column<SlaResult["breachedList"][number]>[] = [
@@ -33,9 +33,9 @@ export default function SlaPage() {
     { key: "status", header: tr("الحالة", "Status"), render: (r) => <StatusPill status={r.status} /> },
   ];
   const nearCols: Column<SlaResult["nearBreachList"][number]>[] = [
-    { key: "contactName", header: "العميل", render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
-    { key: "assigneeName", header: "الموظف", render: (r) => r.assigneeName || "—" },
-    { key: "department", header: "القسم", render: (r) => <DepartmentPill department={r.department} /> },
+    { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
+    { key: "assigneeName", header: tr("الموظف", "Agent"), render: (r) => r.assigneeName || "—" },
+    { key: "department", header: tr("القسم", "Department"), render: (r) => <DepartmentPill department={r.department} /> },
     { key: "waitingSeconds", header: tr("مدة الانتظار", "Waiting time"), render: (r) => <span className="tnum text-warning-fg">{formatDurationShort(r.waitingSeconds)}</span> },
   ];
 
@@ -49,24 +49,24 @@ export default function SlaPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <CardTitle>توزيع الرد الأول</CardTitle>
+          <CardTitle>{tr("توزيع الرد الأول", "First-response distribution")}</CardTitle>
           <DonutChart data={donut} />
         </Card>
         <Card className="lg:col-span-2">
-          <CardTitle>الأهداف الحالية</CardTitle>
+          <CardTitle>{tr("الأهداف الحالية", "Current targets")}</CardTitle>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Target label={tr("هدف الرد الأول", "First-response target")} value={`${formatNumber(data.settings.firstResponseMinutes)} دقيقة`} />
-            <Target label={tr("هدف الحل", "Resolution target")} value={`${formatNumber(data.settings.resolutionHours)} ساعة`} />
+            <Target label={tr("هدف الرد الأول", "First-response target")} value={`${formatNumber(data.settings.firstResponseMinutes)} ${tr("دقيقة", "min")}`} />
+            <Target label={tr("هدف الحل", "Resolution target")} value={`${formatNumber(data.settings.resolutionHours)} ${tr("ساعة", "h")}`} />
             <Target label={tr("المنطقة الزمنية", "Timezone")} value={data.settings.businessHours.timezone} />
             <Target label={tr("ساعات العمل", "Business hours")} value={`${data.settings.businessHours.start}–${data.settings.businessHours.end}`} />
           </div>
           <div className="mt-4 text-xs text-muted-foreground">
-            لتعديل الأهداف انتقل إلى <Link href="/settings" className="text-primary hover:underline">الإعدادات</Link>.
+            {tr("لتعديل الأهداف انتقل إلى", "To change the targets, go to")} <Link href="/settings" className="text-primary hover:underline">{tr("الإعدادات", "Settings")}</Link>.
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-destructive-fg">{formatNumber(data.resolution.breached)}</div><div className="text-2xs text-muted-foreground">خرق الحل</div></div>
-            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-warning-fg">{formatNumber(data.resolution.nearBreach)}</div><div className="text-2xs text-muted-foreground">قريبة</div></div>
-            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-success-fg">{formatNumber(data.resolution.healthy)}</div><div className="text-2xs text-muted-foreground">سليمة</div></div>
+            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-destructive-fg">{formatNumber(data.resolution.breached)}</div><div className="text-2xs text-muted-foreground">{tr("خرق الحل", "Resolution breached")}</div></div>
+            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-warning-fg">{formatNumber(data.resolution.nearBreach)}</div><div className="text-2xs text-muted-foreground">{tr("قريبة", "Near breach")}</div></div>
+            <div className="rounded-lg border border-border p-2"><div className="text-lg font-bold tnum text-success-fg">{formatNumber(data.resolution.healthy)}</div><div className="text-2xs text-muted-foreground">{tr("سليمة", "Healthy")}</div></div>
           </div>
         </Card>
       </div>

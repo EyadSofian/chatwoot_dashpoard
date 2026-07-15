@@ -70,7 +70,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         className={cn(
           "fixed inset-y-0 start-0 z-50 flex h-[100dvh] flex-col border-e border-border bg-surface outline-none",
           "transition-transform duration-200 will-change-transform",
-          open ? "translate-x-0" : "translate-x-full",
+          open ? "translate-x-0" : "-translate-x-full",
           "lg:translate-x-0",
         )}
         style={{ width: SIDEBAR_WIDTH }}
@@ -78,7 +78,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         {/* Identity — fixed head */}
         <div className="shrink-0 border-b border-border px-5 py-5">
           <Logo />
-          <p className="mt-2 truncate text-2xs text-muted-foreground">تحليلات خدمة العملاء</p>
+          <p className="mt-2 truncate text-2xs text-muted-foreground">{tr("تحليلات خدمة العملاء", "Customer service analytics")}</p>
         </div>
 
         {/* Only THIS scrolls, never the page */}
@@ -86,7 +86,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {NAV_GROUPS.map((group, gi) => (
             <div key={locale === "ar" ? group.titleAr : group.titleEn} className={cn(gi > 0 && "mt-5")}>
               <div className="mb-1.5 px-3 text-2xs font-bold uppercase tracking-wider text-muted-foreground/70">
-                {group.titleAr}
+                {locale === "ar" ? group.titleAr : group.titleEn}
               </div>
               <ul className="space-y-0.5">
                 {group.keys.map((key) => {

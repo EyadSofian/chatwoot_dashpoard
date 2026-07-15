@@ -355,16 +355,24 @@ describe("filters work independently and together", () => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   The query layer: live is unbounded, period metrics are bounded.
+   The query layer: live is unbounded, period metrics are bounded, and the
+   heavy aggregation happens inside PostgreSQL (groupBy + one raw GROUPING SETS
+   query) — never by loading rows into Node and capping them with `take`.
    ───────────────────────────────────────────────────────────────────────────── */
 const db = vi.hoisted(() => ({
   agentWhere: undefined as unknown,
   currentWhere: undefined as unknown,
-  intervalWhere: undefined as unknown,
+  needsReplyWhere: undefined as unknown,
   createdWhere: undefined as unknown,
   resolvedWhere: undefined as unknown,
-  conversationCalls: 0,
+  intervalSql: undefined as { text: string; values: unknown[] } | undefined,
 }));
+
+/** Pull the parameterised text + bound values off a Prisma.Sql instance. */
+function sqlParts(query: unknown): { text: string; values: unknown[] } {
+  const q = query as { text?: string; sql?: string; strings?: string[]; values?: unknown[] };
+  return { text: q.text ?? q.sql ?? (q.strings ?? []).join(" ? "), values: q.values ?? [] };
+}
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -375,28 +383,38 @@ vi.mock("@/lib/db", () => ({
       },
     },
     conversation: {
-      findMany: async ({ where }: { where: Record<string, unknown> }) => {
-        db.conversationCalls++;
-        if (where.status) db.currentWhere = where;
+      groupBy: async ({ by, where }: { by: string[]; where: Record<string, unknown> }) => {
+        if (by.includes("status")) db.currentWhere = where;
+        else if (where.needsReply === true) db.needsReplyWhere = where;
         else if (where.resolvedAt) db.resolvedWhere = where;
         else db.createdWhere = where;
         return [];
       },
     },
-    assignmentInterval: {
-      findMany: async ({ where }: { where: unknown }) => {
-        db.intervalWhere = where;
-        return [];
-      },
+    $queryRaw: async (query: unknown) => {
+      db.intervalSql = sqlParts(query);
+      return [];
     },
   },
+}));
+
+// The live-verification layer talks to Chatwoot; the query tests are about the
+// database contract, so keep it out of the way.
+vi.mock("@/lib/chatwoot/liveCounts", () => ({
+  supportsLiveFilters: () => false,
+  fetchLiveCountsByEntity: async () => null,
 }));
 
 const { getAgentLeaderboard } = await import("@/lib/reporting/agents");
 
 describe("getAgentLeaderboard query", () => {
   beforeEach(() => {
-    db.conversationCalls = 0;
+    db.agentWhere = undefined;
+    db.currentWhere = undefined;
+    db.needsReplyWhere = undefined;
+    db.createdWhere = undefined;
+    db.resolvedWhere = undefined;
+    db.intervalSql = undefined;
   });
 
   it("queries live workload with NO date bound, and period metrics with one", async () => {
@@ -411,9 +429,20 @@ describe("getAgentLeaderboard query", () => {
     expect(current.teamCwId).toEqual({ in: [4] });
     expect(current.createdAtCw).toBeUndefined();
 
-    // Assignment activity: bounded by startedAt, NOT by conversation creation.
-    const intervals = db.intervalWhere as Record<string, unknown>;
-    expect(intervals.startedAt).toEqual({ gte: from, lte: to });
+    // Needs-reply is a live number too — no date bound.
+    const needsReply = db.needsReplyWhere as Record<string, unknown>;
+    expect(needsReply.needsReply).toBe(true);
+    expect(needsReply.createdAtCw).toBeUndefined();
+
+    // Assignment activity: aggregated in SQL, bounded by startedAt — NOT by
+    // conversation creation — and the team filter survives into the join.
+    const sql = db.intervalSql!;
+    expect(sql.text).toContain('i."startedAt" >=');
+    expect(sql.text).toContain('i."startedAt" <=');
+    expect(sql.text).toContain('COALESCE(i."teamCwId", c."teamCwId") IN');
+    expect(sql.values).toContainEqual(from);
+    expect(sql.values).toContainEqual(to);
+    expect(sql.values).toContain(4);
 
     // Acquisition: the only query that uses createdAtCw.
     const created = db.createdWhere as Record<string, unknown>;
@@ -429,6 +458,9 @@ describe("getAgentLeaderboard query", () => {
     await getAgentLeaderboard({ from: new Date("2026-02-01"), to: new Date("2026-02-28"), agentId: [10, 20] });
 
     expect(db.agentWhere).toEqual({ id: { in: [10, 20] } });
-    expect((db.intervalWhere as Record<string, unknown>).assigneeCwId).toEqual({ in: [10, 20] });
+    const sql = db.intervalSql!;
+    expect(sql.text).toContain('i."assigneeCwId" IN');
+    expect(sql.values).toContain(10);
+    expect(sql.values).toContain(20);
   });
 });

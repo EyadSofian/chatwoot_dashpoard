@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { average } from "@/lib/format";
 import type { ReportFilters } from "./filters";
 
 export interface FahdResult {
@@ -20,53 +19,51 @@ export interface FahdResult {
 }
 
 export async function getFahd(f: ReportFilters): Promise<FahdResult> {
-  const handoffs = await prisma.botHandoff.findMany({
-    where: {
-      handoffAt: { gte: f.from, lte: f.to },
-      ...(f.department?.length ? { department: { in: f.department } } : {}),
-    },
-    orderBy: { handoffAt: "desc" },
-    take: 40000,
-  });
-
-  const routed = new Map<string, number>();
-  const resp: number[] = [];
-  let reentries = 0;
-  let queued = 0;
-  let replied = 0;
-  for (const h of handoffs) {
-    const dep = h.department ?? "unknown";
-    routed.set(dep, (routed.get(dep) ?? 0) + 1);
-    if (h.reentry) reentries++;
-    if (h.queuedUnassigned) queued++;
-    if (h.gotAgentReply) replied++;
-    if (h.handoffToReplySeconds !== null) resp.push(h.handoffToReplySeconds);
-  }
-
-  const noReply = handoffs.filter((h) => !h.gotAgentReply).slice(0, 25);
-  const convIds = noReply.map((h) => h.conversationCwId);
-  const convs = convIds.length
-    ? await prisma.conversation.findMany({
-        where: { chatwootId: { in: convIds } },
-        select: { chatwootId: true, contactName: true, status: true },
-      })
-    : [];
-  const convMap = new Map(convs.map((c) => [c.chatwootId, c]));
+  const where = {
+    handoffAt: { gte: f.from, lte: f.to },
+    ...(f.department?.length ? { department: { in: f.department } } : {}),
+  };
+  const [aggregate, reentries, queued, replied, routed, noReply] = await Promise.all([
+    prisma.botHandoff.aggregate({
+      where,
+      _count: { _all: true },
+      _avg: { handoffToReplySeconds: true },
+    }),
+    prisma.botHandoff.count({ where: { ...where, reentry: true } }),
+    prisma.botHandoff.count({ where: { ...where, queuedUnassigned: true } }),
+    prisma.botHandoff.count({ where: { ...where, gotAgentReply: true } }),
+    prisma.botHandoff.groupBy({ by: ["department"], where, _count: { _all: true } }),
+    prisma.botHandoff.findMany({
+      where: { ...where, gotAgentReply: false },
+      orderBy: { handoffAt: "desc" },
+      take: 25,
+      select: {
+        conversationCwId: true,
+        department: true,
+        handoffAt: true,
+        conversation: { select: { contactName: true, status: true } },
+      },
+    }),
+  ]);
+  const total = aggregate._count._all;
 
   return {
-    totalHandoffs: handoffs.length,
+    totalHandoffs: total,
     resolvedReentries: reentries,
-    routedByDepartment: [...routed.entries()].map(([department, count]) => ({ department, count })),
+    routedByDepartment: routed.map((row) => ({
+      department: row.department ?? "unknown",
+      count: row._count._all,
+    })),
     queuedUnassigned: queued,
     gotAgentReply: replied,
-    noAgentReply: handoffs.length - replied,
-    avgHandoffToReplySeconds: average(resp),
+    noAgentReply: total - replied,
+    avgHandoffToReplySeconds: aggregate._avg.handoffToReplySeconds,
     noReplyList: noReply.map((h) => ({
       chatwootId: h.conversationCwId,
-      contactName: convMap.get(h.conversationCwId)?.contactName ?? null,
+      contactName: h.conversation.contactName,
       department: h.department,
       handoffAt: h.handoffAt,
-      status: convMap.get(h.conversationCwId)?.status ?? null,
+      status: h.conversation.status,
     })),
   };
 }

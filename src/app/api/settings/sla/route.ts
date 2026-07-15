@@ -33,10 +33,10 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return badRequest("بيانات غير صحيحة");
+    return badRequest("Invalid request");
   }
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return badRequest("إعدادات غير صحيحة", parsed.error.flatten());
+  if (!parsed.success) return badRequest("Invalid settings", parsed.error.flatten());
   const saved = await saveSlaSettings(parsed.data);
   return NextResponse.json(saved);
 }

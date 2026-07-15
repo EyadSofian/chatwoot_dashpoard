@@ -14,27 +14,7 @@ export async function buildAssembleContext(conversationCwId?: number): Promise<A
   const inboxNameById = new Map<number, string>();
   for (const inbox of inboxes) if (inbox.name) inboxNameById.set(inbox.id, inbox.name);
 
-  let assignmentEvents: AssignEvent[] | undefined;
-  let statusEvents: StatusEvent[] | undefined;
-  if (conversationCwId != null) {
-    const events = await prisma.conversationEvent.findMany({
-      where: { conversationCwId },
-      orderBy: { occurredAt: "asc" },
-    });
-    const assigns = events.filter((e) => e.type === "assigned" || e.type === "unassigned");
-    if (assigns.length) {
-      assignmentEvents = assigns.map((e) => ({
-        assigneeId: e.type === "unassigned" ? null : e.toValue ? Number(e.toValue) : null,
-        at: e.occurredAt,
-      }));
-    }
-    const statuses = events.filter((e) =>
-      ["resolved", "reopened", "open", "snoozed"].includes(e.type),
-    );
-    if (statuses.length) {
-      statusEvents = statuses.map((e) => ({ type: e.type as StatusEventType, at: e.occurredAt }));
-    }
-  }
+  const history = conversationCwId != null ? await loadConversationEventContext(conversationCwId) : {};
 
   return {
     botAgentIds: new Set(env.botAgentIds().map(Number).filter((n) => Number.isFinite(n))),
@@ -47,8 +27,31 @@ export async function buildAssembleContext(conversationCwId?: number): Promise<A
     operationsTeamId: env.operationsTeamId(),
     complaintsTeamId: env.complaintsTeamId(),
     inboxNameById,
-    assignmentEvents,
-    statusEvents,
+    ...history,
     now: new Date(),
+  };
+}
+
+/** Load only the per-conversation timeline, so batch syncs can reuse the expensive shared context. */
+export async function loadConversationEventContext(conversationCwId: number): Promise<{
+  assignmentEvents?: AssignEvent[];
+  statusEvents?: StatusEvent[];
+}> {
+  const events = await prisma.conversationEvent.findMany({
+    where: { conversationCwId },
+    orderBy: { occurredAt: "asc" },
+  });
+  const assigns = events.filter((event) => event.type === "assigned" || event.type === "unassigned");
+  const statuses = events.filter((event) => ["resolved", "reopened", "open", "snoozed"].includes(event.type));
+  return {
+    assignmentEvents: assigns.length
+      ? assigns.map((event) => ({
+          assigneeId: event.type === "unassigned" ? null : event.toValue ? Number(event.toValue) : null,
+          at: event.occurredAt,
+        }))
+      : undefined,
+    statusEvents: statuses.length
+      ? statuses.map((event) => ({ type: event.type as StatusEventType, at: event.occurredAt }))
+      : undefined,
   };
 }

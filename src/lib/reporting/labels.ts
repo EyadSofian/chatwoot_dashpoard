@@ -1,6 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { average, median } from "@/lib/format";
 import { conversationWhere, type ReportFilters } from "./filters";
+import { andSql, conversationSqlConditions } from "./sqlFilters";
 
 /**
  * Label performance.
@@ -195,25 +197,119 @@ export function buildLabelsReport(input: {
 export async function getLabels(f: ReportFilters): Promise<LabelsResult> {
   // The label filter narrows which conversations are counted; it must not shrink
   // the roster, so the label query carries no filter at all.
-  const where = conversationWhere(f);
-
-  const [labels, conversations] = await Promise.all([
-    prisma.label.findMany({ select: { title: true, color: true, description: true } }),
-    prisma.conversation.findMany({
-      where,
-      select: {
-        labels: true,
-        status: true,
-        needsReply: true,
-        handledByHuman: true,
-        responseSeconds: true,
-        conversationDurationSeconds: true,
-        slaFirstResponseBreached: true,
-        lastMessageAt: true,
-      },
-      take: 40000,
+  const conditions = conversationSqlConditions(f, { alias: "c" });
+  const whereSql = andSql(conditions);
+  const [labels, aggregates, summaryRows] = await Promise.all([
+    prisma.label.findMany({
+      select: { title: true, color: true, description: true },
+      orderBy: { title: "asc" },
     }),
+    prisma.$queryRaw<LabelAggregate[]>(Prisma.sql`
+      WITH filtered AS (
+        SELECT c.* FROM "conversations" c ${whereSql}
+      )
+      SELECT
+        label."title",
+        COUNT(*)::bigint AS "conversations",
+        COUNT(*) FILTER (WHERE c."status" = 'open')::bigint AS "open",
+        COUNT(*) FILTER (WHERE c."status" = 'pending')::bigint AS "pending",
+        COUNT(*) FILTER (WHERE c."status" = 'resolved')::bigint AS "resolved",
+        COUNT(*) FILTER (WHERE c."handledByHuman" = TRUE)::bigint AS "replied",
+        COUNT(*) FILTER (WHERE c."needsReply" = TRUE)::bigint AS "needsReply",
+        AVG(c."responseSeconds")::double precision AS "avgResponseSeconds",
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY c."responseSeconds") FILTER (
+          WHERE c."responseSeconds" IS NOT NULL
+        )::double precision AS "medianResponseSeconds",
+        AVG(c."conversationDurationSeconds")::double precision AS "avgResolutionSeconds",
+        COUNT(*) FILTER (WHERE c."slaFirstResponseBreached" = TRUE)::bigint AS "slaBreaches",
+        MAX(c."lastMessageAt") AS "lastActivityAt"
+      FROM filtered c
+      CROSS JOIN LATERAL UNNEST(c."labels") AS label("title")
+      GROUP BY label."title"
+    `),
+    prisma.$queryRaw<LabelSummaryAggregate[]>(Prisma.sql`
+      SELECT
+        COUNT(*)::bigint AS "conversations",
+        COUNT(*) FILTER (WHERE COALESCE(CARDINALITY(c."labels"), 0) = 0)::bigint AS "unlabeled",
+        AVG(c."responseSeconds")::double precision AS "avgResponseSeconds",
+        COUNT(*) FILTER (WHERE c."slaFirstResponseBreached" = TRUE)::bigint AS "slaBreaches"
+      FROM "conversations" c
+      ${whereSql}
+    `),
   ]);
 
-  return buildLabelsReport({ labels, conversations, activeOnly: f.activeOnly });
+  const rows = new Map<string, LabelRow>();
+  for (const label of labels) rows.set(label.title, emptyRow(label.title, label));
+  const total = asNumber(summaryRows[0]?.conversations);
+  for (const aggregate of aggregates) {
+    let row = rows.get(aggregate.title);
+    if (!row) {
+      row = emptyRow(aggregate.title);
+      rows.set(aggregate.title, row);
+    }
+    row.conversations = asNumber(aggregate.conversations);
+    row.open = asNumber(aggregate.open);
+    row.pending = asNumber(aggregate.pending);
+    row.resolved = asNumber(aggregate.resolved);
+    row.replied = asNumber(aggregate.replied);
+    row.needsReply = asNumber(aggregate.needsReply);
+    row.avgResponseSeconds = nullableNumber(aggregate.avgResponseSeconds);
+    row.medianResponseSeconds = nullableNumber(aggregate.medianResponseSeconds);
+    row.avgResolutionSeconds = nullableNumber(aggregate.avgResolutionSeconds);
+    row.slaBreaches = asNumber(aggregate.slaBreaches);
+    row.share = total ? row.conversations / total : 0;
+    row.lastActivityAt = aggregate.lastActivityAt;
+    row.hasActivity = row.conversations > 0;
+  }
+
+  const all = [...rows.values()];
+  const summary: LabelsSummary = {
+    totalLabels: all.length,
+    activeLabels: all.filter((row) => row.hasActivity).length,
+    conversations: total,
+    unlabeled: asNumber(summaryRows[0]?.unlabeled),
+    avgResponseSeconds: nullableNumber(summaryRows[0]?.avgResponseSeconds),
+    slaBreaches: asNumber(summaryRows[0]?.slaBreaches),
+  };
+  const visible = f.activeOnly ? all.filter((row) => row.hasActivity) : all;
+  visible.sort((a, b) => {
+    if (a.hasActivity !== b.hasActivity) return a.hasActivity ? -1 : 1;
+    if (b.conversations !== a.conversations) return b.conversations - a.conversations;
+    return a.title.localeCompare(b.title, "en");
+  });
+  return { rows: visible, summary };
+}
+
+interface LabelAggregate {
+  title: string;
+  conversations: bigint | number | string;
+  open: bigint | number | string;
+  pending: bigint | number | string;
+  resolved: bigint | number | string;
+  replied: bigint | number | string;
+  needsReply: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  medianResponseSeconds: number | string | null;
+  avgResolutionSeconds: number | string | null;
+  slaBreaches: bigint | number | string;
+  lastActivityAt: Date | null;
+}
+
+interface LabelSummaryAggregate {
+  conversations: bigint | number | string;
+  unlabeled: bigint | number | string;
+  avgResponseSeconds: number | string | null;
+  slaBreaches: bigint | number | string;
+}
+
+function asNumber(value: bigint | number | string | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function nullableNumber(value: bigint | number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
