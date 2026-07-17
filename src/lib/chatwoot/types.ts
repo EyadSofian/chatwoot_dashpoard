@@ -75,6 +75,8 @@ export interface CwConversation {
   created_at?: number | string;
   updated_at?: number | string;
   last_activity_at?: number | string;
+  /** Epoch seconds since the customer has been waiting for a reply; 0/absent = not waiting. */
+  waiting_since?: number | string | null;
   snoozed_until?: number | string | null;
   custom_attributes?: Record<string, unknown>;
   additional_attributes?: Record<string, unknown>;

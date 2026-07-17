@@ -21,7 +21,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ teamId: str
   const pageSize = Number(url.searchParams.get("pageSize") ?? 50) || 50;
   const memberIdRaw = Number(url.searchParams.get("memberId"));
   const memberId = Number.isFinite(memberIdRaw) && memberIdRaw > 0 ? memberIdRaw : undefined;
+  const view = url.searchParams.get("view") === "history" ? "history" : "current";
 
-  const result = await getTeamConversations(id, filters, page, pageSize, memberId);
+  const result = await getTeamConversations(id, filters, page, pageSize, memberId, view);
   return NextResponse.json(result);
 }

@@ -10,6 +10,7 @@ import {
 } from "@/lib/metrics/teamAttribution";
 import { conversationWhere, type ReportFilters } from "./filters";
 import { andSql, conversationSqlConditions } from "./sqlFilters";
+import { currentWorkloadPage, type DetailConversationRow, type DetailConversations } from "./agents";
 
 /** The unattributed bucket — conversations we refuse to guess a team for. */
 export const NO_TEAM_ID = -1;
@@ -749,15 +750,25 @@ export async function getTeamConversations(
   page = 1,
   pageSize = 50,
   memberId?: number,
-) {
-  const size = Math.min(Math.max(pageSize, 1), 200);
-  const currentPage = Math.max(page, 1);
-  const skip = (currentPage - 1) * size;
+  view: "current" | "history" = "current",
+): Promise<DetailConversations> {
   const scoped = {
     ...f,
     teamId: undefined,
     agentId: memberId ? [memberId] : f.agentId,
   };
+
+  // Current workload: the live Chatwoot list, so it matches the header count and
+  // no reassigned/reopened conversation is silently missing. The member filter
+  // rides along as an assignee_id clause inside the same live filter.
+  if (view === "current") {
+    return currentWorkloadPage("team", teamId, scoped, page);
+  }
+
+  // Period history: the mirror, with the single-team attribution CTE.
+  const size = Math.min(Math.max(pageSize, 1), 200);
+  const currentPage = Math.max(page, 1);
+  const skip = (currentPage - 1) * size;
   const cte = attributedConversationsCte(scoped);
 
   const [totalRows, rows] = await Promise.all([
@@ -771,6 +782,7 @@ export async function getTeamConversations(
       ${cte}
       SELECT
         a."chatwootId",
+        a."displayId",
         a."contactName",
         a."contactPhone",
         a."status",
@@ -793,7 +805,39 @@ export async function getTeamConversations(
     `),
   ]);
   const total = asNumber(totalRows[0]?.count);
-  return { rows, total, page: currentPage, pageSize: size, pages: Math.ceil(total / size) };
+  return {
+    rows: rows.map(teamRowToDetail),
+    total,
+    page: currentPage,
+    pageSize: size,
+    pages: Math.ceil(total / size),
+    source: "database",
+    snapshotAt: null,
+    exact: false,
+  };
+}
+
+function teamRowToDetail(r: TeamConversationListRow): DetailConversationRow {
+  return {
+    chatwootId: r.chatwootId,
+    displayId: r.displayId ?? null,
+    contactName: r.contactName,
+    contactPhone: r.contactPhone,
+    status: r.status,
+    assigneeCwId: r.assigneeCwId,
+    assigneeName: r.assigneeName,
+    department: r.department,
+    inboxName: r.inboxName,
+    needsReply: r.needsReply,
+    responseSeconds: r.responseSeconds,
+    conversationDurationSeconds: r.conversationDurationSeconds,
+    campaignLabel: r.campaignLabel,
+    botInvolved: r.botInvolved,
+    lastMessageAt: r.lastMessageAt ? r.lastMessageAt.toISOString() : null,
+    waitingSince: null,
+    slaFirstResponseBreached: r.slaFirstResponseBreached,
+    inDatabase: true,
+  };
 }
 
 function attributedConversationsCte(f: ReportFilters): Prisma.Sql {
@@ -901,6 +945,7 @@ interface TeamMemberAggregate {
 
 interface TeamConversationListRow {
   chatwootId: number;
+  displayId: number | null;
   contactName: string | null;
   contactPhone: string | null;
   status: string | null;

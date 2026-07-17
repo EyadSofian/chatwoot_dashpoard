@@ -364,7 +364,7 @@ const db = vi.hoisted(() => ({
   currentWhere: undefined as unknown,
   needsReplyWhere: undefined as unknown,
   createdWhere: undefined as unknown,
-  resolvedWhere: undefined as unknown,
+  resolvedSql: undefined as { text: string; values: unknown[] } | undefined,
   intervalSql: undefined as { text: string; values: unknown[] } | undefined,
 }));
 
@@ -386,13 +386,16 @@ vi.mock("@/lib/db", () => ({
       groupBy: async ({ by, where }: { by: string[]; where: Record<string, unknown> }) => {
         if (by.includes("status")) db.currentWhere = where;
         else if (where.needsReply === true) db.needsReplyWhere = where;
-        else if (where.resolvedAt) db.resolvedWhere = where;
         else db.createdWhere = where;
         return [];
       },
     },
+    // Two raw queries now: the assignment GROUPING SETS aggregate, and the
+    // resolved-at-close-time attribution (a LATERAL join). Route by content.
     $queryRaw: async (query: unknown) => {
-      db.intervalSql = sqlParts(query);
+      const parts = sqlParts(query);
+      if (parts.text.includes("GROUPING SETS")) db.intervalSql = parts;
+      else if (parts.text.includes("resolvedAt")) db.resolvedSql = parts;
       return [];
     },
   },
@@ -413,7 +416,7 @@ describe("getAgentLeaderboard query", () => {
     db.currentWhere = undefined;
     db.needsReplyWhere = undefined;
     db.createdWhere = undefined;
-    db.resolvedWhere = undefined;
+    db.resolvedSql = undefined;
     db.intervalSql = undefined;
   });
 
@@ -448,10 +451,15 @@ describe("getAgentLeaderboard query", () => {
     const created = db.createdWhere as Record<string, unknown>;
     expect(created.createdAtCw).toEqual({ gte: from, lte: to });
 
-    // Resolved: anchored on resolvedAt.
-    const resolved = db.resolvedWhere as Record<string, unknown>;
-    expect(resolved.resolvedAt).toEqual({ gte: from, lte: to });
-    expect(resolved.createdAtCw).toBeUndefined();
+    // Resolved: anchored on resolvedAt, and credited to the agent who held the
+    // conversation at resolve time (the LATERAL interval), not the current owner.
+    const resolvedSql = db.resolvedSql!;
+    expect(resolvedSql.text).toContain('c."resolvedAt" >=');
+    expect(resolvedSql.text).toContain('c."resolvedAt" <=');
+    expect(resolvedSql.text).toContain("LEFT JOIN LATERAL");
+    expect(resolvedSql.text).not.toContain('c."createdAtCw"');
+    expect(resolvedSql.values).toContainEqual(from);
+    expect(resolvedSql.values).toContainEqual(to);
   });
 
   it("narrows to the selected agents", async () => {

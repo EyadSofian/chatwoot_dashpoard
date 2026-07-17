@@ -30,12 +30,31 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-type FilterItem = {
+export type FilterItem = {
   attribute_key: string;
   filter_operator: "equal_to";
   values: string[];
   query_operator: "AND" | null;
 };
+
+/** The active statuses that survive the report's status filter. */
+export function activeStatusesFor(f: ReportFilters): string[] {
+  return ACTIVE_STATUSES.filter((status) => !f.status?.length || f.status.includes(status));
+}
+
+/**
+ * The exact `/conversations/filter` payload for one entity's current workload.
+ * The live LIST and the live COUNT must be built from this same function, or the
+ * detail list and the header number drift apart — the whole bug we are fixing.
+ */
+export function entityConversationFilter(
+  entity: "agent" | "team",
+  id: number,
+  statuses: string[],
+  f: ReportFilters,
+): FilterItem[] {
+  return withStatus(basePayload(entity, id, f), statuses);
+}
 
 /**
  * Chatwoot's indexed conversation filter returns `meta.all_count` without
@@ -53,7 +72,7 @@ export async function fetchLiveCountsByEntity(
   if (!supportsLiveFilters(f)) return null;
 
   const selectedIds = entity === "agent" ? f.agentId : f.teamId;
-  const activeStatuses = ACTIVE_STATUSES.filter((status) => !f.status?.length || f.status.includes(status));
+  const activeStatuses = activeStatusesFor(f);
   const key = JSON.stringify({ entity, ids: [...ids].sort((a, b) => a - b), filters: cacheableFilters(f) });
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
@@ -85,7 +104,7 @@ export async function fetchLiveAccountCount(
   client = new ChatwootClient(),
 ): Promise<LiveAccountCount | null> {
   if (!supportsLiveFilters(f)) return null;
-  const activeStatuses = ACTIVE_STATUSES.filter((status) => !f.status?.length || f.status.includes(status));
+  const activeStatuses = activeStatusesFor(f);
   if (!activeStatuses.length) return { open: 0, active: 0, snapshotAt: new Date().toISOString() };
 
   const key = JSON.stringify({ entity: "account", filters: cacheableFilters(f) });
@@ -143,12 +162,16 @@ function accountPayload(f: ReportFilters): FilterItem[] {
   return items;
 }
 
-async function count(client: ChatwootClient, base: FilterItem[], statuses: string[]): Promise<number> {
-  const payload = [...base, item("status", statuses, null)].map((entry, index, all) => ({
+/** Append the status clause and re-chain query_operator so the last item is null. */
+export function withStatus(base: FilterItem[], statuses: string[]): FilterItem[] {
+  return [...base, item("status", statuses, null)].map((entry, index, all) => ({
     ...entry,
     query_operator: index === all.length - 1 ? null : "AND",
   }));
-  const response = await client.filterConversations(payload, 1);
+}
+
+async function count(client: ChatwootClient, base: FilterItem[], statuses: string[]): Promise<number> {
+  const response = await client.filterConversations(withStatus(base, statuses), 1);
   const raw = getMeta(response).all_count;
   const value = typeof raw === "number" ? raw : Number(raw);
   if (!Number.isFinite(value)) throw new Error("Chatwoot filter response did not include meta.all_count");

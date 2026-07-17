@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { fetchLiveCountsByEntity, supportsLiveFilters } from "@/lib/chatwoot/liveCounts";
+import { fetchLiveCountsByEntity, supportsLiveFilters, activeStatusesFor } from "@/lib/chatwoot/liveCounts";
+import { fetchLiveConversations, type LiveConversationRow } from "@/lib/chatwoot/liveConversations";
 import { average, median, percentile } from "@/lib/format";
 import { conversationWhere, type ReportFilters } from "./filters";
 import { andSql, conversationSqlConditions } from "./sqlFilters";
@@ -348,15 +349,36 @@ export async function getAgentLeaderboard(f: ReportFilters): Promise<AgentLeader
       where: { ...periodWhere, assigneeCwId: assigneeScope },
       _count: { _all: true },
     }),
-    prisma.conversation.groupBy({
-      by: ["assigneeCwId"],
-      where: {
-        ...liveWhere,
-        resolvedAt: { gte: f.from, lte: f.to },
-        assigneeCwId: assigneeScope,
-      },
-      _count: { _all: true },
-    }),
+    // "Resolved in the period" is credited to the agent who actually held the
+    // conversation at resolve time — the assignment interval covering resolvedAt —
+    // not whoever holds it now. A conversation resolved by A and later reassigned
+    // to B must still count for A. Where no real interval covers the resolve
+    // (backfill), it falls back to the current assignee so nothing is lost.
+    prisma.$queryRaw<ResolvedAggregate[]>(Prisma.sql`
+      SELECT
+        COALESCE(held."assigneeCwId", c."assigneeCwId")::int AS "agentId",
+        COUNT(*)::bigint AS "count"
+      FROM "conversations" c
+      LEFT JOIN LATERAL (
+        SELECT ai."assigneeCwId"
+        FROM "assignment_intervals" ai
+        WHERE ai."conversationCwId" = c."chatwootId"
+          AND ai."startedAt" <= c."resolvedAt"
+          AND (ai."endedAt" IS NULL OR ai."endedAt" >= c."resolvedAt")
+        ORDER BY ai."startedAt" DESC
+        LIMIT 1
+      ) held ON TRUE
+      ${andSql([
+        Prisma.sql`c."resolvedAt" >= ${f.from}`,
+        Prisma.sql`c."resolvedAt" <= ${f.to}`,
+        Prisma.sql`COALESCE(held."assigneeCwId", c."assigneeCwId") IS NOT NULL`,
+        ...(f.agentId?.length
+          ? [Prisma.sql`COALESCE(held."assigneeCwId", c."assigneeCwId") IN (${Prisma.join(f.agentId)})`]
+          : []),
+        ...conversationSqlConditions(f, { alias: "c", ignoreDate: true, ignoreAgent: true }),
+      ])}
+      GROUP BY COALESCE(held."assigneeCwId", c."assigneeCwId")
+    `),
     prisma.$queryRaw<IntervalAggregate[]>(Prisma.sql`
       SELECT
         CASE WHEN GROUPING(i."assigneeCwId") = 1 THEN NULL ELSE i."assigneeCwId" END AS "agentId",
@@ -419,7 +441,7 @@ export async function getAgentLeaderboard(f: ReportFilters): Promise<AgentLeader
     if (group.assigneeCwId !== null) ensure(group.assigneeCwId).createdInPeriod = group._count._all;
   }
   for (const group of resolved) {
-    if (group.assigneeCwId !== null) ensure(group.assigneeCwId).resolvedWhileAssigned = group._count._all;
+    if (group.agentId !== null) ensure(group.agentId).resolvedWhileAssigned = asNumber(group.count);
   }
 
   let intervalSummary: IntervalAggregate | undefined;
@@ -500,6 +522,11 @@ export async function getAgentLeaderboard(f: ReportFilters): Promise<AgentLeader
   };
 }
 
+interface ResolvedAggregate {
+  agentId: number | null;
+  count: bigint | number | string;
+}
+
 interface IntervalAggregate {
   agentId: number | null;
   isSummary: number;
@@ -525,42 +552,263 @@ function nullableNumber(value: bigint | number | string | null | undefined): num
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export async function getAgentDetail(agentId: number, f: ReportFilters, page = 1, pageSize = 50) {
-  const size = Math.min(Math.max(pageSize, 1), 200);
-  const currentPage = Math.max(page, 1);
-  const where = { ...conversationWhere(f, { ignoreDate: true }), assigneeCwId: agentId };
-  const [agent, board, total, rows] = await Promise.all([
+/**
+ * One conversation row in an agent/team detail list. The same shape backs both
+ * the live "Current workload" tab and the "Period history" tab, so the table
+ * renders identically; only `inDatabase` and which columns are populated differ.
+ */
+export interface DetailConversationRow {
+  chatwootId: number;
+  displayId: number | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  status: string | null;
+  assigneeCwId: number | null;
+  assigneeName: string | null;
+  department: string | null;
+  inboxName: string | null;
+  needsReply: boolean;
+  /** null = unknown: not ingested yet, or no real assignment record to measure from. */
+  responseSeconds: number | null;
+  conversationDurationSeconds: number | null;
+  campaignLabel: string | null;
+  botInvolved: boolean;
+  lastMessageAt: string | null;
+  /** Current tab only: how long the customer has been waiting for a reply. */
+  waitingSince: string | null;
+  slaFirstResponseBreached: boolean;
+  /** false = Chatwoot returned it but we have never ingested it (history columns blank). */
+  inDatabase: boolean;
+}
+
+export interface DetailConversations {
+  rows: DetailConversationRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+  /** "chatwoot" = the exact live workload; "database" = mirror fallback. */
+  source: "chatwoot" | "database";
+  snapshotAt: string | null;
+  /** true when rows are the live Chatwoot workload and match the header count. */
+  exact: boolean;
+}
+
+export interface AgentDetailResult {
+  agent: AgentRecord & { role: string | null } | null;
+  summary: AgentRow | null;
+  view: "current" | "history";
+  live: AgentLeaderboard["live"];
+  conversations: DetailConversations;
+}
+
+export async function getAgentDetail(
+  agentId: number,
+  f: ReportFilters,
+  opts: { view?: "current" | "history"; page?: number; pageSize?: number } = {},
+): Promise<AgentDetailResult> {
+  const view = opts.view === "history" ? "history" : "current";
+  const page = Math.max(1, opts.page ?? 1);
+
+  const [agentRecord, board] = await Promise.all([
     prisma.agent.findUnique({ where: { id: agentId } }),
     getAgentLeaderboard({ ...f, agentId: [agentId], activeOnly: false }),
+  ]);
+
+  const conversations =
+    view === "history"
+      ? await periodHistoryPage({ ...conversationWhere(f), assigneeCwId: agentId }, page)
+      : await currentWorkloadPage("agent", agentId, f, page);
+
+  const summary = board.rows.find((a) => a.agentId === agentId) ?? null;
+  return {
+    agent: agentRecord
+      ? { id: agentRecord.id, name: agentRecord.name, email: agentRecord.email, availability: agentRecord.availability, role: agentRecord.role }
+      : null,
+    summary,
+    view,
+    live: board.live,
+    conversations,
+  };
+}
+
+/**
+ * The live "Current workload" list, straight from Chatwoot, enriched by the
+ * mirror. This is what guarantees the list length equals the header count.
+ * Falls back to the mirror only when Chatwoot's live filter cannot be used.
+ */
+export async function currentWorkloadPage(
+  entity: "agent" | "team",
+  id: number,
+  f: ReportFilters,
+  page: number,
+): Promise<DetailConversations> {
+  const live = await fetchLiveConversations(entity, id, f, { page }).catch(() => null);
+
+  if (live) {
+    const ids = live.rows.map((r) => r.chatwootId);
+    const [enrich, inboxNames] = await Promise.all([enrichByChatwootId(ids), inboxNameMap(ids)]);
+    const rows = live.rows.map((r) => mergeLiveRow(r, enrich.get(r.chatwootId), inboxNames));
+    return {
+      rows,
+      total: live.total,
+      page: live.page,
+      pageSize: live.pageSize,
+      pages: live.pages,
+      source: "chatwoot",
+      snapshotAt: live.snapshotAt,
+      exact: true,
+    };
+  }
+
+  // Fallback: the mirror's active workload (department/label/search filters, or
+  // Chatwoot being unreachable). Clearly flagged as non-exact.
+  const statuses = activeStatusesFor(f);
+  const where = {
+    ...conversationWhere(f, { ignoreDate: true, ignoreAgent: entity === "agent", ignoreTeam: entity === "team" }),
+    ...(entity === "agent" ? { assigneeCwId: id } : { teamCwId: id }),
+    ...(statuses.length ? { status: { in: statuses } } : {}),
+  };
+  return dbConversationsPage(where, page, 50, "database", { orderBy: { lastMessageAt: "desc" } });
+}
+
+/** The "Period history" list: conversations created in the window (from the mirror). */
+async function periodHistoryPage(where: Prisma.ConversationWhereInput, page: number): Promise<DetailConversations> {
+  return dbConversationsPage(where, page, 50, "database", { orderBy: { createdAtCw: "desc" } });
+}
+
+async function dbConversationsPage(
+  where: Prisma.ConversationWhereInput,
+  page: number,
+  size: number,
+  source: "chatwoot" | "database",
+  opts: { orderBy: Prisma.ConversationOrderByWithRelationInput },
+): Promise<DetailConversations> {
+  const currentPage = Math.max(1, page);
+  const [total, rows] = await Promise.all([
     prisma.conversation.count({ where }),
     prisma.conversation.findMany({
       where,
-      orderBy: { lastMessageAt: "desc" },
+      orderBy: opts.orderBy,
       skip: (currentPage - 1) * size,
       take: size,
       select: {
         chatwootId: true,
+        displayId: true,
         contactName: true,
         contactPhone: true,
         status: true,
+        assigneeCwId: true,
+        assigneeName: true,
         department: true,
         inboxName: true,
         needsReply: true,
         responseSeconds: true,
         conversationDurationSeconds: true,
         campaignLabel: true,
+        botInvolved: true,
         lastMessageAt: true,
-        createdAtCw: true,
         slaFirstResponseBreached: true,
       },
     }),
   ]);
 
-  const summary = board.rows.find((a) => a.agentId === agentId) ?? null;
   return {
-    agent,
-    summary,
-    conversations: { rows, total, page: currentPage, pageSize: size, pages: Math.ceil(total / size) },
-    live: board.live,
+    rows: rows.map((r) => ({
+      chatwootId: r.chatwootId,
+      displayId: r.displayId,
+      contactName: r.contactName,
+      contactPhone: r.contactPhone,
+      status: r.status,
+      assigneeCwId: r.assigneeCwId,
+      assigneeName: r.assigneeName,
+      department: r.department,
+      inboxName: r.inboxName,
+      needsReply: r.needsReply,
+      responseSeconds: r.responseSeconds,
+      conversationDurationSeconds: r.conversationDurationSeconds,
+      campaignLabel: r.campaignLabel,
+      botInvolved: r.botInvolved,
+      lastMessageAt: r.lastMessageAt ? r.lastMessageAt.toISOString() : null,
+      waitingSince: null,
+      slaFirstResponseBreached: r.slaFirstResponseBreached,
+      inDatabase: true,
+    })),
+    total,
+    page: currentPage,
+    pageSize: size,
+    pages: Math.ceil(total / size),
+    source,
+    snapshotAt: null,
+    exact: false,
+  };
+}
+
+/** Mirror columns keyed by chatwootId, to enrich a live Chatwoot list. */
+interface EnrichRow {
+  department: string | null;
+  inboxName: string | null;
+  responseSeconds: number | null;
+  conversationDurationSeconds: number | null;
+  campaignLabel: string | null;
+  botInvolved: boolean;
+  needsReply: boolean;
+  slaFirstResponseBreached: boolean;
+  lastMessageAt: Date | null;
+}
+
+async function enrichByChatwootId(ids: number[]): Promise<Map<number, EnrichRow>> {
+  if (!ids.length) return new Map();
+  const rows = await prisma.conversation.findMany({
+    where: { chatwootId: { in: ids } },
+    select: {
+      chatwootId: true,
+      department: true,
+      inboxName: true,
+      responseSeconds: true,
+      conversationDurationSeconds: true,
+      campaignLabel: true,
+      botInvolved: true,
+      needsReply: true,
+      slaFirstResponseBreached: true,
+      lastMessageAt: true,
+    },
+  });
+  return new Map(rows.map((r) => [r.chatwootId, r]));
+}
+
+/** inbox id → name, for live rows whose conversation is not in the mirror yet. */
+async function inboxNameMap(ids: number[]): Promise<Map<number, string>> {
+  if (!ids.length) return new Map();
+  const inboxes = await prisma.inbox.findMany({ select: { id: true, name: true } });
+  return new Map(inboxes.filter((i) => i.name).map((i) => [i.id, i.name as string]));
+}
+
+function mergeLiveRow(
+  live: LiveConversationRow,
+  db: EnrichRow | undefined,
+  inboxNames: Map<number, string>,
+): DetailConversationRow {
+  return {
+    chatwootId: live.chatwootId,
+    displayId: live.displayId,
+    contactName: live.contactName,
+    contactPhone: live.contactPhone,
+    status: live.status,
+    assigneeCwId: live.assigneeCwId,
+    assigneeName: live.assigneeName,
+    department: db?.department ?? null,
+    inboxName: db?.inboxName ?? (live.inboxCwId != null ? inboxNames.get(live.inboxCwId) ?? null : null),
+    // The live "waiting" signal is authoritative for right now; fall back to the
+    // mirror's needsReply only when Chatwoot did not report a waiting time.
+    needsReply: live.needsReply || (db?.needsReply ?? false),
+    responseSeconds: db?.responseSeconds ?? null,
+    conversationDurationSeconds: db?.conversationDurationSeconds ?? null,
+    campaignLabel: db?.campaignLabel ?? null,
+    botInvolved: db?.botInvolved ?? false,
+    lastMessageAt: live.lastActivityAt ?? (db?.lastMessageAt ? db.lastMessageAt.toISOString() : null),
+    waitingSince: live.waitingSince,
+    slaFirstResponseBreached: db?.slaFirstResponseBreached ?? false,
+    inDatabase: db !== undefined,
   };
 }

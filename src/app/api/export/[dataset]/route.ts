@@ -17,7 +17,7 @@ import { DEPARTMENT_LABELS_AR, type Department } from "@/lib/constants";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const iso = (d: Date | null | undefined) => (d ? new Date(d).toISOString() : "");
+const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : "");
 const depAr = (d: string | null) => (d ? DEPARTMENT_LABELS_AR[d as Department] ?? d : "");
 
 export async function GET(request: Request, ctx: { params: Promise<{ dataset: string }> }) {
@@ -139,7 +139,8 @@ export async function GET(request: Request, ctx: { params: Promise<{ dataset: st
       if (!Number.isFinite(teamId)) return badRequest("teamId is required");
       const memberIdValue = Number(params.get("memberId"));
       const memberId = Number.isFinite(memberIdValue) && memberIdValue > 0 ? memberIdValue : undefined;
-      const first = await getTeamConversations(teamId, filters, 1, 200, memberId);
+      // Export the full period history (the mirror), not a single live snapshot page.
+      const first = await getTeamConversations(teamId, filters, 1, 200, memberId, "history");
       const columns: CsvColumn<(typeof first.rows)[number]>[] = [
         { key: "chatwootId", label: "رقم المحادثة" },
         { key: "contactName", label: "العميل" },
@@ -289,7 +290,7 @@ async function* iterateTeamConversations(
 ) {
   for (const row of first.rows) yield row;
   for (let page = 2; page <= first.pages; page++) {
-    const result = await getTeamConversations(teamId, filters, page, 200, memberId);
+    const result = await getTeamConversations(teamId, filters, page, 200, memberId, "history");
     for (const row of result.rows) yield row;
   }
 }

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import type { TeamMemberRow, TeamRow } from "@/lib/reporting/teams";
+import type { DetailConversations } from "@/lib/reporting/agents";
 import { Avatar, Badge, cn, EmptyState, MiniStat, Spinner, StatusPill } from "@/components/ui";
 import { formatDateTime, formatDurationShort, formatNumber } from "@/lib/format";
 import { useLocale } from "@/lib/i18n";
@@ -16,21 +17,7 @@ interface TeamDetail {
   members: TeamMemberRow[];
 }
 
-interface TeamConversations {
-  rows: {
-    chatwootId: number;
-    contactName: string | null;
-    assigneeName: string | null;
-    assigneeCwId: number | null;
-    status: string | null;
-    needsReply: boolean;
-    responseSeconds: number | null;
-    lastMessageAt: string | null;
-  }[];
-  total: number;
-  page: number;
-  pages: number;
-}
+type ConvView = "current" | "history";
 
 const dash = <span className="text-muted-foreground">—</span>;
 const dur = (v: number | null) => (v === null ? dash : <span className="tnum">{formatDurationShort(v)}</span>);
@@ -40,6 +27,7 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
   const [agentFilter, setAgentFilter] = useState<number | null>(null);
+  const [convView, setConvView] = useState<ConvView>("current");
   const [page, setPage] = useState(1);
 
   // Esc closes, and the page behind must not scroll while the sheet is open.
@@ -57,9 +45,9 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
   }, [onClose]);
 
   const { data, loading, error } = useApiData<TeamDetail>(`/api/teams/${teamId}`);
-  const { data: convs, loading: convsLoading } = useApiData<TeamConversations>(
+  const { data: convs, loading: convsLoading } = useApiData<DetailConversations>(
     `/api/teams/${teamId}/conversations`,
-    { page, pageSize: 25, memberId: agentFilter ?? undefined },
+    { page, pageSize: 25, memberId: agentFilter ?? undefined, view: convView },
   );
 
   const row = data?.row;
@@ -246,6 +234,31 @@ export function TeamDrawer({ teamId, onClose }: { teamId: number; onClose: () =>
                 <a href={exportQs("team-conversations")} className="btn-ghost rounded-full px-3 py-1.5 text-2xs">
                   {tr("تصدير المحادثات", "Export conversations")}
                 </a>
+              </div>
+
+              {/* Live current workload vs period history — the same split as the
+                  agent detail, so the list can never disagree with the count. */}
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-border bg-surface p-1 text-2xs font-medium">
+                  <button
+                    className={convView === "current" ? "rounded-md bg-primary px-2.5 py-1 text-primary-foreground" : "rounded-md px-2.5 py-1 text-muted-foreground hover:text-foreground"}
+                    onClick={() => { setConvView("current"); setPage(1); }}
+                  >
+                    {tr("الحمل الحالي", "Current workload")}
+                  </button>
+                  <button
+                    className={convView === "history" ? "rounded-md bg-primary px-2.5 py-1 text-primary-foreground" : "rounded-md px-2.5 py-1 text-muted-foreground hover:text-foreground"}
+                    onClick={() => { setConvView("history"); setPage(1); }}
+                  >
+                    {tr("تاريخ الفترة", "Period history")}
+                  </button>
+                </div>
+                {convs && convView === "current" && (
+                  <span className="text-2xs text-muted-foreground">
+                    {convs.exact ? tr("مباشر من Chatwoot", "Live from Chatwoot") : tr("من قاعدة البيانات", "From the mirror")}
+                    {convs.snapshotAt ? ` · ${formatDateTime(convs.snapshotAt)}` : ""}
+                  </span>
+                )}
               </div>
 
               {convsLoading ? (

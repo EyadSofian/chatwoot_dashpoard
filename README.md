@@ -69,9 +69,12 @@ end   = that agent's first PUBLIC OUTGOING message after the assignment
 
 Assignment history comes from live `assignee_changed` webhooks stored in
 `conversation_events`. Backfill cannot recover that history from the Chatwoot
-API, so backfilled conversations fall back to a single interval starting at
-conversation creation. **Response-time accuracy improves from the day the
-webhook is connected onward.**
+API. A conversation with **no real assignment event has an unknown assignment
+time**, so its response time stays `null` (shown as "unknown") rather than being
+guessed from the creation timestamp — a guess that used to manufacture
+real-looking response times that were not true. **Response-time accuracy
+improves from the day the webhook is connected onward**, and only measured
+intervals enter the averages.
 
 See `src/lib/metrics/assignment.ts` and `tests/assignment.test.ts`.
 
@@ -263,7 +266,10 @@ metric, and upserts. It is **safe to re-run** — nothing double-counts.
 
 Backfill reconstructs message-derived metrics exactly, but cannot recover
 assignment or reopen history that predates the webhook (Chatwoot's API does not
-expose it). Those conversations get a single assignment interval from creation.
+expose it). Those conversations have an **unknown** assignment time — their
+response time is left null instead of being invented from the creation
+timestamp. Migration `0006_remove_inferred_assignments` clears any such inferred
+values written by earlier versions.
 
 ---
 

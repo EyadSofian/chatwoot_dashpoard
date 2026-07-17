@@ -189,11 +189,13 @@ export function assembleConversation(
 
   // ── Assignment intervals + response ──
   const endBoundary = resolvedAt ?? now;
-  const assignmentEvents: AssignEvent[] = ctx.assignmentEvents?.length
-    ? ctx.assignmentEvents
-    : assigneeCwId != null
-      ? [{ assigneeId: assigneeCwId, at: createdAtCw }]
-      : [];
+  // Response time can only be measured from a REAL assignment. Backfill cannot
+  // recover when an agent was assigned, and assuming "assigned at creation"
+  // manufactured a response time that looked like a number but was not true. With
+  // no assignee_changed evidence we leave assignedAt/responseSeconds null so the
+  // unknown reads as unknown instead of inflating (or deflating) the averages.
+  // Accuracy sharpens from the day the webhook is connected onward.
+  const assignmentEvents: AssignEvent[] = ctx.assignmentEvents?.length ? ctx.assignmentEvents : [];
   const intervals = buildAssignmentIntervals(
     assignmentEvents,
     humanReplies.map((m) => ({ senderId: m.senderId, at: m.createdAt! })),

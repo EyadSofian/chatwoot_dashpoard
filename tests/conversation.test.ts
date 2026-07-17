@@ -101,6 +101,24 @@ describe("response time from assignment (end to end)", () => {
     expect(a.conversation.needsReply).toBe(true);
   });
 
+  it("invents no response time when there is no real assignment record (backfill)", () => {
+    // A backfilled conversation: the assignee is known now, but Chatwoot's API
+    // never told us WHEN they were assigned. The old code assumed "at creation"
+    // and reported a response time measured from the creation timestamp — a
+    // real-looking number that was not true. With no assignee_changed evidence,
+    // it must stay unknown.
+    const a = assembleConversation(conversation(), [...NOISE, HUMAN_REPLY], ctx); // no assignmentEvents
+
+    expect(a.assignmentIntervals).toHaveLength(0); // nothing inferred from creation
+    expect(a.responseMetric.assignedAt).toBeNull(); // unknown, not the creation time
+    expect(a.responseMetric.responseSeconds).toBeNull(); // unknown, not 600
+    expect(a.conversation.responseSeconds).toBeNull();
+    expect(a.conversation.slaFirstResponseBreached).toBe(false); // cannot breach the unmeasurable
+    // The human reply itself is still a known fact and stays visible.
+    expect(a.conversation.firstHumanReplyAt).toEqual(d("2026-07-01T10:10:00Z"));
+    expect(a.conversation.handledByHuman).toBe(true);
+  });
+
   it("opens a fresh interval on reassignment and attributes the reply to the new agent", () => {
     const reply20: CwMessage = {
       id: 7,
