@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Inbox } from "lucide-react";
 import { useApiData } from "@/lib/client/api";
 import type { AgentRow, DetailConversationRow, DetailConversations } from "@/lib/reporting/agents";
 import { Kpi, Section, LoadingBlock, ErrorState, StatusPill, DepartmentPill, NeedsReplyDot, Badge } from "@/components/ui";
@@ -40,6 +40,19 @@ export default function AgentDetailPage() {
   const columns: Column<DetailConversationRow>[] = [
     { key: "contactName", header: tr("العميل", "Customer"), render: (r) => <Link href={`/conversations?conv=${r.chatwootId}`} className="font-medium text-primary hover:underline">{r.contactName || `#${r.chatwootId}`}</Link> },
     { key: "contactPhone", header: tr("الهاتف", "Phone"), render: (r) => <span className="tnum text-muted-foreground ltr-nums">{r.contactPhone || "—"}</span> },
+    {
+      key: "inboxName",
+      header: tr("الإنبوكس", "Inbox"),
+      render: (r) =>
+        r.inboxName ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium">
+            <Inbox className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+            {r.inboxName}
+          </span>
+        ) : (
+          <span className="text-2xs text-muted-foreground">—</span>
+        ),
+    },
     { key: "status", header: tr("الحالة", "Status"), render: (r) => <StatusPill status={r.status} /> },
     { key: "department", header: tr("القسم", "Department"), render: (r) => <DepartmentPill department={r.department} /> },
     { key: "needsReply", header: tr("يحتاج رد", "Needs reply"), render: (r) => <NeedsReplyDot value={r.needsReply} /> },
@@ -143,7 +156,11 @@ export default function AgentDetailPage() {
                   </Link>
                   <StatusPill status={r.status} />
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                    <Inbox className="h-3 w-3 text-muted-foreground" aria-hidden />
+                    {r.inboxName || tr("إنبوكس غير معروف", "Unknown inbox")}
+                  </span>
                   {r.contactPhone && <span className="tnum ltr-nums">{r.contactPhone}</span>}
                   <DepartmentPill department={r.department} />
                   {r.needsReply && <span className="inline-flex items-center gap-1 font-bold text-destructive-fg"><NeedsReplyDot value /> {tr("يحتاج رد", "Needs reply")}</span>}
